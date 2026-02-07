@@ -7,4 +7,7 @@ description = "EcoCode is a system to analyze your code energy and cost efficien
 
 [dependencies]
 clap = { version = "4.5.56", features = ["derive"] }
+csv = "1.4.0"
+nvml-wrapper = "0.11.0"
+serde = "1.0.228"
 sysinfo = "0.38.0"

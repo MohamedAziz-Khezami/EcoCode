@@ -1,118 +1,141 @@
 use clap::Parser;
-use std::env;
-use std::io::Read;
+use nvml_wrapper::Nvml;
 use std::process::Command;
-use std::result;
-
-use sysinfo::{CpuRefreshKind, Pid, ProcessesToUpdate, RefreshKind, System};
-
 use std::thread;
 use std::time::Duration;
+use std::time::SystemTime;
 
-use std::fs;
-use std::io;
+use sysinfo::{Pid, ProcessesToUpdate, RefreshKind, System};
 
+mod exporter;
 mod sensor;
+use sensor::energy::get_energy;
+use sensor::gpu::DEFAULT_GPU_DEVICE_INDEX;
+use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
 
+use exporter::terminal::TerminalExporter;
+use exporter::csv::CsvExporter;
+use exporter::{Exporter, Record};
 
-//todo: add modularity to each sensing part
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Output format: "terminal" or "csv"
+    #[arg(short, long, default_value = "terminal")]
+    output: String,
 
-// fn parse_string_to_number(s: &String) -> u64 {
-//     let c: Vec<&str> = s.split_whitespace().collect(); // tied to the lifetime of s so can't be a static literal(live forever)
-//     let usage = c
-//         .get(8)
-//         .unwrap_or_else(|| &"0")
-//         .parse::<u64>()
-//         .unwrap_or_default(); //the unwrap_or_else method in Rust takes a closure (a function-like object) as an argument, not a direct value.
-//     usage //let add = |x, y| x + y;
-//           //println!("{}", add(2, 3)); // Outputs: 5 in our case we have a function (closure) that takes nothing and always return a reference to 0
-// } // or just used unwrap_or(&"0")
+    /// CSV output file path (required if output=csv)
+    #[arg(short, long)]
+    file: Option<String>,
 
-// #[derive(Parser, Debug)]
-// #[command(version, about, long_about = None)]
-// struct Args {
-//     #[arg(short, long)]
-//     cmd: Vec<String>,
-// }
+    /// Measurement interval in seconds
+    #[arg(short, long, default_value = "1")]
+    interval: u64,
+    /// Command to monitor (with its arguments)
+    #[arg(trailing_var_arg = true, required = true)]
+    command: Vec<String>,
+}
 
-fn main() -> Result<(), io::Error> {
-    const POWER_FILE_PATH: &str = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"; // Path for energy usage in microjoules
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Args = Args::parse();
 
-    //TODO: Get the args of the process get the name then run the command normally
+    let interval = args.interval;
 
-    // let args: Args = Args::parse();
-    let args: Vec<String> = env::args().collect();
-    println!("{:?}", args);
+    // Create exporter based on output format
+    let mut exporter: Box<dyn Exporter > = match args.output.as_str() {
+        "terminal" => Box::new(TerminalExporter::new()),
+        "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
+        _ => Box::new(TerminalExporter::new()),
+    };
 
-    let mut command = Command::new(&args[1])
-        .args(&args[2..])
+    let command = Command::new(&args.command[0])
+        .args(&args.command[1..])
         .spawn()
         .expect("failed to execute process");
 
-    println!("Process ID: {:?}", command.id()); // this will give me the PID directly
-
     let pid = Pid::from(command.id() as usize);
 
-    //TODO: Get the usage of the process with the pid
-
     let mut sys = System::new_with_specifics(RefreshKind::everything());
-
     let num_cores = sys.cpus().len();
-    println!("Number of cores: {}", num_cores);
 
-    //TODO: Continuously monitor the process's CPU usage
+    // Refresh process data
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut cpu_usage = sys.process(pid).unwrap().cpu_usage() / num_cores as f32; //first read
+
+    let nvml = match Nvml::init() {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("Error initializing NVML: {}", e);
+            return Err(Box::new(e));
+        }
+    };
+
+    // Get the GPU device (default index 0)
+    let device = match nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error getting GPU device: {}", e);
+            return Err(Box::new(e));
+        }
+    };
+
+    let mut iteration = 0;
+
     loop {
+        // Check if the process is still running
+
+        if cpu_usage <= 0.0 {
+            // If CPU usage is 0%, the process may be done, break out of the loop
+            println!("Process {} has finished or is idle.", pid);
+            break;
+        }
+
+        iteration += 1;
+
+        let cpu_energy_1 = get_energy().unwrap();
+        let gpu_energy_1 = get_gpu_energy(&device).unwrap();
+
+        thread::sleep(Duration::from_secs(interval)); // Sleep for the specified interval
+
         // Refresh process data
         sys.refresh_processes(ProcessesToUpdate::All, true);
 
-        // Check if the process is still running
-        if let Some(process) = sys.process(pid) {
-            // Print the CPU usage of the process
-            if process.cpu_usage() > 0.0 {
-                println!(
-                    "CPU usage of process {}: {}%",
-                    pid,
-                    process.cpu_usage() / num_cores as f32
-                );
-            } else {
-                // If CPU usage is 0%, the process may be done, break out of the loop
-                println!("Process {} has finished or is idle.", pid);
-                break;
-            }
-            // Wait for 1 second before updating the usage again
-            thread::sleep(Duration::from_secs(1));
-        } else {
-            println!("Process with PID {} has terminated.", pid);
-            break; // Exit the loop if the process is no longer running
-        }
+        cpu_usage = sys.process(pid).unwrap().cpu_usage() / num_cores as f32;
+
+        let cpu_energy_2 = get_energy().unwrap();
+
+        let delta_cpu_energy_mj = (cpu_energy_2 - cpu_energy_1) / 1000.0; // µJ → mJ
+        let cpu_energy_w = delta_cpu_energy_mj / 1000.0 / interval as f64; // mJ → J, then J/s = W
+
+        let cpu_energy_per_pid = cpu_energy_w * (cpu_usage as f64 / 100.0); // Normalize to 0-1
+
+        let gpu_energy_2 = get_gpu_energy(&device).unwrap();
+
+        let energy_consumed_by_pid_watt =
+            get_gpu_energy_by_pid(&device, pid.as_u32(), gpu_energy_1, gpu_energy_2, interval);
+
+        // Get current timestamp
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_millis() as u64;
+
+        // Create and add record to exporter
+        let record = Record::new(
+            iteration,
+            pid.as_u32(),
+            timestamp,
+            cpu_usage as f64,
+            energy_consumed_by_pid_watt.1 * 100.0, // GPU usage percentage - can be calculated from GPU metrics
+            cpu_energy_per_pid,
+            energy_consumed_by_pid_watt.0,
+        );
+        exporter.add_record(record)?;
+        exporter.export_line()?;
     }
 
-    //TODO: Get the cpu power consumption at the end //fixme put it in the loop
-    // Use sudo to read the power consumption file with elevated privileges 
-    let output = Command::new("sudo") //todo: add chmod for file access
-        .arg("cat")
-        .arg(POWER_FILE_PATH)
-        .output()
-        .expect("Failed to execute sudo command");
-
-    // Check if the sudo command succeeded
-    if !output.status.success() {
-        eprintln!("Failed to read the power consumption file with sudo.");
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Permission denied",
-        ));
-    }
-
-    let content = String::from_utf8_lossy(&output.stdout);
-
-    // Parse the energy consumption from the file (in microjoules)
-    let energy_consumed: u64 = content.trim().parse().unwrap_or(0);
-
-    // Print the energy consumption
-    println!("CPU Energy Consumption: {} microjoules", energy_consumed);
-
-    sensor::energy::refresh_energy();
+    // Export final results
+    exporter.export()?;
 
     return Ok(());
 }
