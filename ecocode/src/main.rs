@@ -1,3 +1,4 @@
+
 use clap::Parser;
 use nvml_wrapper::Nvml;
 use std::fs::File;
@@ -14,9 +15,10 @@ use sensor::gpu::DEFAULT_GPU_DEVICE_INDEX;
 use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
 
 use exporter::csv::CsvExporter;
-use exporter::terminal::TerminalExporter;
 use exporter::json::JsonExporter;
+use exporter::prometheus::PrometheusExporter;
 use exporter::sqlite::SqliteExporter;
+use exporter::terminal::TerminalExporter;
 use exporter::{Exporter, Record};
 
 #[derive(Parser, Debug)]
@@ -38,7 +40,8 @@ struct Args {
     command: Vec<String>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::parse();
 
     let interval = args.interval;
@@ -49,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
         "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap())),
+        "prometheus" => Box::new(PrometheusExporter::new()),
         _ => Box::new(TerminalExporter::new()),
     };
 
@@ -66,22 +70,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cpu_usage;
 
-    let nvml = match Nvml::init() {
-        Ok(n) => n,
-        Err(e) => {
-            eprintln!("Error initializing NVML: {}", e);
-            return Err(Box::new(e));
-        }
-    };
+    let nvml = Nvml::init().map_err(|e| {
+        eprintln!("Error initializing NVML: {}", e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
 
     // Get the GPU device (default index 0)
-    let device = match nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX) {
-        Ok(d) => d,
-        Err(e) => {
+    let device = nvml
+        .device_by_index(DEFAULT_GPU_DEVICE_INDEX)
+        .map_err(|e| {
             eprintln!("Error getting GPU device: {}", e);
-            return Err(Box::new(e));
-        }
-    };
+            Box::new(e) as Box<dyn std::error::Error>
+        })?;
 
     let mut iteration = 0;
     // Initial timestamp in microseconds for NVML (0 targets all samples initially)
@@ -162,5 +162,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Export final results
     exporter.export()?;
 
-    return Ok(());
+    Ok(())
 }
+

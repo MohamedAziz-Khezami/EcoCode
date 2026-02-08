@@ -1,5 +1,6 @@
 pub mod csv;
 pub mod json;
+pub mod prometheus;
 pub mod sqlite;
 pub mod terminal;
 
