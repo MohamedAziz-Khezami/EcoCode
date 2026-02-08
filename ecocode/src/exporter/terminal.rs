@@ -2,12 +2,14 @@ use crate::exporter::{Exporter, ExporterType, Record};
 
 pub struct TerminalExporter {
     records: Vec<Record>,
+    pub first_record: bool,
 }
 
 impl TerminalExporter {
     pub fn new() -> TerminalExporter {
         TerminalExporter {
             records: Vec::new(),
+            first_record: true,
         }
     }
 }
@@ -21,7 +23,7 @@ impl Exporter for TerminalExporter {
         Ok(())
     }
 
-    fn export(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("\n[TERMINAL EXPORT]");
         println!("\n{}", "=".repeat(80));
         println!(
@@ -47,17 +49,18 @@ impl Exporter for TerminalExporter {
         Ok(())
     }
 
-    fn export_line(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         //export the last record
         let r = self.records.last().unwrap();
 
-        if r.id == 1 {
+        if self.first_record {
             println!("\n{}", "=".repeat(80));
             println!(
                 "{:<5} {:<8} {:<12} {:<10} {:<10} {:<12} {:<12}",
                 "ID", "PID", "Timestamp", "CPU%", "CPU(W)", "GPU%", "GPU(W)"
             );
             println!("{}", "-".repeat(80));
+            self.first_record = false;
         }
 
         println!(

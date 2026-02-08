@@ -3,8 +3,10 @@
 //! This module provides functionality to read CPU energy consumption from the system's
 //! Intel RAPL interface. Energy values are measured in microjoules.
 
-use std::process::Command;
-use std::{error::Error, io};
+use crate::sensor::RAPL_PATH;
+use std::error::Error;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 
 /// Refreshes and retrieves the current energy consumption from the Intel RAPL interface.
 ///
@@ -39,29 +41,18 @@ use std::{error::Error, io};
 /// - This function requires the program to be run with sudo privileges
 /// - Energy values are cumulative and represent total consumption since system boot
 /// - Call this function periodically to calculate energy consumed during a time period
-pub fn get_energy() -> Result<f64, Box<dyn Error>> {
-    const RAPL_PATH: &str = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj";
-
-    // Use sudo to read the energy file with elevated privileges
-    let output = Command::new("sudo")
-        .arg("cat")
-        .arg(RAPL_PATH)
-        .output()
-        .expect("Failed to execute sudo command");
-
-    // Check if the command succeeded
-    if !output.status.success() {
-        eprintln!("Failed to read the energy file with sudo.");
-        return Err(Box::new(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Permission denied when reading RAPL energy file",
-        )));
-    }
-
-    let content = String::from_utf8_lossy(&output.stdout);
-
+pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>> {
     // Parse the energy consumption from the file (in microjoules)
-    let energy_consumed: f64 = content.trim().parse()?;
+    //sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
+
+    rapl_file.seek(SeekFrom::Start(0))?;
+
+    let mut buffer = String::new();
+    rapl_file.read_line(&mut buffer)?;
+
+    let energy_consumed = buffer.trim().parse::<f64>()?;
+
+    // dbg!(energy_consumed);
 
     Ok(energy_consumed) //energy in microjoules
 }

@@ -1,20 +1,22 @@
 use clap::Parser;
 use nvml_wrapper::Nvml;
+use std::fs::File;
+use std::io::BufReader;
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
-use std::time::SystemTime;
-
+use std::time::{Duration, Instant, SystemTime};
 use sysinfo::{Pid, ProcessesToUpdate, RefreshKind, System};
-
 mod exporter;
 mod sensor;
-use sensor::energy::get_energy;
+use sensor::RAPL_PATH;
+use sensor::cpu::get_energy;
 use sensor::gpu::DEFAULT_GPU_DEVICE_INDEX;
 use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
 
-use exporter::terminal::TerminalExporter;
 use exporter::csv::CsvExporter;
+use exporter::terminal::TerminalExporter;
+use exporter::json::JsonExporter;
+use exporter::sqlite::SqliteExporter;
 use exporter::{Exporter, Record};
 
 #[derive(Parser, Debug)]
@@ -42,11 +44,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = args.interval;
 
     // Create exporter based on output format
-    let mut exporter: Box<dyn Exporter > = match args.output.as_str() {
+    let mut exporter: Box<dyn Exporter> = match args.output.as_str() {
         "terminal" => Box::new(TerminalExporter::new()),
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
+        "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
+        "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap())),
         _ => Box::new(TerminalExporter::new()),
     };
+
+    println!("Exporter type: {:?}", exporter.exporter_type());
 
     let command = Command::new(&args.command[0])
         .args(&args.command[1..])
@@ -58,10 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sys = System::new_with_specifics(RefreshKind::everything());
     let num_cores = sys.cpus().len();
 
-    // Refresh process data
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-
-    let mut cpu_usage = sys.process(pid).unwrap().cpu_usage() / num_cores as f32; //first read
+    let mut cpu_usage;
 
     let nvml = match Nvml::init() {
         Ok(n) => n,
@@ -81,57 +84,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut iteration = 0;
+    // Initial timestamp in microseconds for NVML (0 targets all samples initially)
+    let mut timestamp: u64 = 0;
+
+    //sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
+    let mut rapl_file = BufReader::new(File::open(RAPL_PATH)?);
 
     loop {
         // Check if the process is still running
-
-        if cpu_usage <= 0.0 {
-            // If CPU usage is 0%, the process may be done, break out of the loop
-            println!("Process {} has finished or is idle.", pid);
-            break;
-        }
+        // Refresh process data
+        sys.refresh_processes(ProcessesToUpdate::All, true);
 
         iteration += 1;
 
-        let cpu_energy_1 = get_energy().unwrap();
-        let gpu_energy_1 = get_gpu_energy(&device).unwrap();
+        let cpu_energy_1 = get_energy(&mut rapl_file)?;
+        let gpu_energy_1 = get_gpu_energy(&device)?;
 
+        let start_time = Instant::now();
         thread::sleep(Duration::from_secs(interval)); // Sleep for the specified interval
 
         // Refresh process data
         sys.refresh_processes(ProcessesToUpdate::All, true);
 
-        cpu_usage = sys.process(pid).unwrap().cpu_usage() / num_cores as f32;
+        cpu_usage = if sys.process(pid).is_none() {
+            println!("Process {} finished", pid);
+            break;
+        } else {
+            sys.process(pid).unwrap().cpu_usage() / num_cores as f32
+        };
 
-        let cpu_energy_2 = get_energy().unwrap();
+        let cpu_energy_2 = get_energy(&mut rapl_file).unwrap();
+        let elapsed_secs = start_time.elapsed().as_secs_f64();
+
+        // dbg!(elapsed_secs);
 
         let delta_cpu_energy_mj = (cpu_energy_2 - cpu_energy_1) / 1000.0; // µJ → mJ
-        let cpu_energy_w = delta_cpu_energy_mj / 1000.0 / interval as f64; // mJ → J, then J/s = W
+
+        let cpu_energy_w = (delta_cpu_energy_mj / 1000.0) / elapsed_secs; // (mJ -> J) / s = W
 
         let cpu_energy_per_pid = cpu_energy_w * (cpu_usage as f64 / 100.0); // Normalize to 0-1
 
-        let gpu_energy_2 = get_gpu_energy(&device).unwrap();
+        let gpu_energy_2 = get_gpu_energy(&device)?;
 
-        let energy_consumed_by_pid_watt =
-            get_gpu_energy_by_pid(&device, pid.as_u32(), gpu_energy_1, gpu_energy_2, interval);
+        let (gpu_power_pid, gpu_util_pid, next_timestamp) = get_gpu_energy_by_pid(
+            &device,
+            pid.as_u32(),
+            gpu_energy_1,
+            gpu_energy_2,
+            timestamp,
+            elapsed_secs,
+        );
 
-        // Get current timestamp
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_millis() as u64;
+        // Update timestamp for next iteration
+        timestamp = next_timestamp;
 
         // Create and add record to exporter
         let record = Record::new(
             iteration,
             pid.as_u32(),
-            timestamp,
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_millis() as i64,
             cpu_usage as f64,
-            energy_consumed_by_pid_watt.1 * 100.0, // GPU usage percentage - can be calculated from GPU metrics
             cpu_energy_per_pid,
-            energy_consumed_by_pid_watt.0,
+            gpu_util_pid,
+            gpu_power_pid,
         );
         exporter.add_record(record)?;
         exporter.export_line()?;
+
+        if cpu_usage <= 0.0 && gpu_util_pid <= 0.0 && gpu_power_pid <= 0.0 {
+            println!("Process finished");
+            break;
+        }
     }
 
     // Export final results

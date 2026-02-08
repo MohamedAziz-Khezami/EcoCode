@@ -5,5 +5,7 @@
 //! - `energy`: CPU energy monitoring using Intel RAPL interface
 //! - `gpu`: GPU energy monitoring using NVIDIA Management Library (NVML)
 
-pub mod energy;
+pub mod cpu;
 pub mod gpu;
+
+pub const RAPL_PATH: &str = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj";
