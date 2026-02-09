@@ -1,4 +1,3 @@
-
 use clap::Parser;
 use nvml_wrapper::Nvml;
 use std::fs::File;
@@ -93,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // Check if the process is still running
         // Refresh process data
-        sys.refresh_processes(ProcessesToUpdate::All, true);
+        sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
 
         iteration += 1;
 
@@ -104,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(Duration::from_secs(interval)); // Sleep for the specified interval
 
         // Refresh process data
-        sys.refresh_processes(ProcessesToUpdate::All, true);
+        sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
 
         cpu_usage = if sys.process(pid).is_none() {
             println!("Process {} finished", pid);
@@ -164,4 +163,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
