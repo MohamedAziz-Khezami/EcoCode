@@ -1,3 +1,6 @@
 venv
 Cargo.lock
 /target
+*.pt
+*.csv
+*.db3

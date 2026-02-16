@@ -1,7 +1,13 @@
+//! SQLite exporter — persists measurement records into a SQLite database.
+
+
 use rusqlite::Connection;
 
 use crate::exporter::{Exporter, ExporterType};
 
+/// Exports records to a SQLite database file.
+///
+/// The `records` table is created automatically if it does not exist.
 pub struct SqliteExporter {
     db: Connection,
 }

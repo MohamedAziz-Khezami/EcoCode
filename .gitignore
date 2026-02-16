@@ -1,6 +1,6 @@
 # Ignore all `target/` directories across the entire project
 **/target/
-
+/data
 # Ignore Cargo.lock in the main project (if this is a library, you can keep it in the sub-projects)
 Cargo.lock
 

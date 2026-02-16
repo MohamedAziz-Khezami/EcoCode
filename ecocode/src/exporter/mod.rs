@@ -1,3 +1,12 @@
+//! Exporter module — defines the output backends for measurement records.
+//!
+//! Available exporters:
+//! - [`terminal`] — pretty-printed table to stdout
+//! - [`csv`] — comma-separated values file
+//! - [`json`] — JSON array file
+//! - [`sqlite`] — SQLite database
+//! - [`prometheus`] — Prometheus metrics endpoint via HTTP
+
 pub mod csv;
 pub mod json;
 pub mod sqlite;
