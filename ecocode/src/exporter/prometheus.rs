@@ -1,8 +1,20 @@
+//! Prometheus exporter — exposes measurement metrics via an HTTP `/metrics` endpoint.
+//!
+//! Starts a background HTTP server on port 9091 using `warp`, serving metrics
+//! in the Prometheus text exposition format.
+
 use crate::exporter::{Exporter, ExporterType, Record};
 use prometheus::{Encoder, Gauge, Registry, TextEncoder};
 use std::error::Error;
 use warp::Filter;
 
+/// Exports records as Prometheus gauge metrics available at `http://localhost:9091/metrics`.
+///
+/// Exposed metrics:
+/// - `ecocode_cpu_usage` — CPU usage percentage
+/// - `ecocode_cpu_energy_watts` — CPU energy consumption in Watts
+/// - `ecocode_gpu_usage` — GPU usage percentage
+/// - `ecocode_gpu_energy_watts` — GPU energy consumption in Watts
 pub struct PrometheusExporter {
     registry: Registry,
     cpu_usage: Gauge,
@@ -12,6 +24,7 @@ pub struct PrometheusExporter {
 }
 
 impl PrometheusExporter {
+    /// Creates a new Prometheus exporter and spawns the HTTP server in the background.
     pub fn new() -> PrometheusExporter {
         let registry = Registry::new();
 
@@ -41,7 +54,7 @@ impl PrometheusExporter {
             gpu_energy,
         };
 
-        // Start warp server in a background thread
+        // Spawn a warp HTTP server in the background to serve metrics
         let registry_clone = exporter.registry.clone();
         tokio::spawn(async move {
             let metrics_route = warp::path("metrics").map(move || {
@@ -65,6 +78,7 @@ impl Exporter for PrometheusExporter {
         ExporterType::Prometheus
     }
 
+    /// Updates the Prometheus gauge values with the latest measurement.
     fn add_record(&mut self, record: Record) -> Result<(), Box<dyn Error>> {
         self.cpu_usage.set(record.cpu_usage);
         self.cpu_energy.set(record.cpu_energy);

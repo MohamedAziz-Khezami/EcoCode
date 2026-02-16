@@ -1,11 +1,18 @@
+//! Terminal exporter — prints measurement records as a formatted table to stdout.
+
 use crate::exporter::{Exporter, ExporterType, Record};
 
+/// Exports records to the terminal as a formatted table.
+///
+/// Records are both accumulated for a final summary (`export()`)
+/// and streamed line-by-line during measurement (`export_line()`).
 pub struct TerminalExporter {
     records: Vec<Record>,
-    pub first_record: bool,
+    first_record: bool,
 }
 
 impl TerminalExporter {
+    /// Creates a new terminal exporter.
     pub fn new() -> TerminalExporter {
         TerminalExporter {
             records: Vec::new(),
@@ -18,11 +25,13 @@ impl Exporter for TerminalExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Terminal
     }
+
     fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         self.records.push(record);
         Ok(())
     }
 
+    /// Prints all accumulated records as a formatted table.
     fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("\n[TERMINAL EXPORT]");
         println!("\n{}", "=".repeat(80));
@@ -49,10 +58,11 @@ impl Exporter for TerminalExporter {
         Ok(())
     }
 
+    /// Prints the most recently added record as a single table row.
     fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        //export the last record
         let r = self.records.last().unwrap();
 
+        // Print the table header once before the first row
         if self.first_record {
             println!("\n{}", "=".repeat(80));
             println!(

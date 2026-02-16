@@ -4,52 +4,74 @@
 //! using the NVIDIA Management Library (NVML) wrapper. It can retrieve both system-wide
 //! and per-process GPU metrics.
 
-use core::time;
-
-use nvml_wrapper::{Device, Nvml};
+use nvml_wrapper::Device;
 
 /// Default NVIDIA GPU device index to monitor.
 pub const DEFAULT_GPU_DEVICE_INDEX: u32 = 0;
 
-pub fn get_gpu_info() -> Result<(), Box<dyn std::error::Error>> {
-    let nvml = Nvml::init()?;
-    let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
-    let name = device.name()?;
-    println!("\n[GPU INFO]");
-    println!("  GPU Name: {}", name);
-    Ok(())
-}
+// pub fn get_gpu_info() -> Result<(), Box<dyn std::error::Error>> {
+//     let nvml = Nvml::init()?;
+//     let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
+//     let name = device.name()?;
+//     println!("\n[GPU INFO]");
+//     println!("  GPU Name: {}", name);
+//     Ok(())
+// }
 
-pub fn get_gpu_power() -> Result<u32, Box<dyn std::error::Error>> {
-    let nvml = Nvml::init()?;
-    let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
-    let power = device.power_usage()?; // in mW
+// pub fn get_gpu_power(device: &Device) -> Result<u32, Box<dyn std::error::Error>> {
 
-    Ok(power)
-}
+//     let power = device.power_usage()?; // in milliWatt
 
+//     Ok(power)
+// }
+
+// pub fn get_gpu_energy(device: &Device) -> Result<f64, Box<dyn std::error::Error>> {
+//     //optimize: use nvml as input since reinit is expensive
+
+//     let energy_milij = device.total_energy_consumption()?; // in mJ
+
+//     Ok(energy_milij as f64)
+// }
+
+/// Returns the cumulative GPU energy consumption in **millijoules (mJ)**.
+///
+/// This value is cumulative since the last NVIDIA driver reload.
+/// Take two readings and compute the delta to get interval energy.
+///
+/// # Errors
+///
+/// Returns an error if the NVML query fails (e.g. unsupported GPU, device lost).
 pub fn get_gpu_energy(device: &Device) -> Result<f64, Box<dyn std::error::Error>> {
-    //optimize: use nvml as input since reinit is expensive
-
-    let energy_milij = device.total_energy_consumption()?; // in mJ
-
-    Ok(energy_milij as f64)
+    let energy_mj = device.total_energy_consumption()?;
+    Ok(energy_mj as f64)
 }
 
-// 1. What are these samples?
-// The NVIDIA driver doesn't just keep a single "current utilization" number for each process.
-// Instead, it has an internal circular buffer where it records "snapshots" of activity at high frequency (usually every few milliseconds).
-// When you call device.process_utilization_stats(timestamp), you are asking the driver: "Give me every snapshot you've recorded since this specific point in time."
-// 2. What does the function actually return?
-// It returns a Vec<ProcessUtilizationSample>. If your code sleeps for 1 second and the driver takes a snapshot every 100ms, that vector will contain about 10 samples for your process.
-// Each ProcessUtilizationSample looks like this:
-// pid
-// : The process ID.
-// timestamp: The exact microsecond this specific snapshot was taken.
-// sm_util: The GPU utilization (%) during that tiny slice of time.
-// mem_util: Video memory utilization during that slice.
-// enc_util / dec_util: Video encoder/decoder activity.
-
+/// Computes per-process GPU power and utilization for a given measurement interval.
+///
+/// This function combines two data sources:
+/// 1. **Energy counter delta** — the difference between two cumulative `total_energy_consumption()`
+///    readings (`energy_1` and `energy_2`), converted to average power over the interval.
+/// 2. **Process utilization samples** — high-frequency SM utilization snapshots from the NVIDIA
+///    driver's internal circular buffer, filtered for the target `pid`.
+///
+/// The per-process power is estimated as: `total_gpu_power_w × avg_process_utilization`.
+///
+/// # Arguments
+///
+/// * `device` — The NVML device handle.
+/// * `pid` — The PID of the target process.
+/// * `energy_1` — Cumulative GPU energy (mJ) at the **start** of the interval.
+/// * `energy_2` — Cumulative GPU energy (mJ) at the **end** of the interval.
+/// * `timestamp` — NVML timestamp (µs) from the last successful sample query.
+///                  Pass `0` on the first call to fetch all buffered samples.
+/// * `interval_secs` — Elapsed wall-clock time for this interval, in seconds.
+///
+/// # Returns
+///
+/// A tuple of `(process_gpu_power_w, process_gpu_util_percent, next_timestamp)`:
+/// - `process_gpu_power_w` — Estimated per-process GPU power draw in Watts.
+/// - `process_gpu_util_percent` — Average SM utilization for this process (0–100%).
+/// - `next_timestamp` — The latest sample timestamp to pass into the next call.
 pub fn get_gpu_energy_by_pid(
     device: &Device,
     pid: u32,
@@ -58,60 +80,48 @@ pub fn get_gpu_energy_by_pid(
     timestamp: u64,
     interval_secs: f64,
 ) -> (f64, f64, u64) {
+    // Fetch per-process utilization samples since the last timestamp.
+    // On failure (e.g. process exited the GPU), return zeroes and keep
+    // the same timestamp so the next call can retry the missed window.
     let stats = match device.process_utilization_stats(timestamp) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Error fetching process utilization for PID {}: {}, maybe it stopped running on the GPU.", pid, e);
-            return (0.0, 0.0, timestamp); // Return current timestamp to retry next time
+            eprintln!(
+                "Error fetching process utilization for PID {}: {}. \
+                 Process may have stopped running on the GPU.",
+                pid, e
+            );
+            return (0.0, 0.0, timestamp);
         }
     };
 
-    //If the function fails once and we return the same timestamp, the next successful call will return samples for a 2-second window (the failed 1s + the current 1s).
+    // Advance the timestamp cursor to the most recent sample so the next
+    // call only retrieves new samples (avoids double-counting).
+    let next_timestamp = stats.iter().map(|s| s.timestamp).max().unwrap_or(timestamp); // next timestamp the gpu stats will use for next iteration
 
-    // However, in
-    // main.rs
-    // we are still calculating total_gpu_power_w using only the 1-second delta of the physical hardware energy counters (energy_2 - energy_1).
-
-    // The result: You are applying the average utilization of the last 2 seconds to the total power consumed in the last 1 second. It's an approximation that says: "I don't know exactly what happened in the last second, so I'll use the average of everything I've seen since my last successful check."
-
-    // Is there a better way?
-
-    // If you want to perfectly "give up" on the failed period and stay strictly within the current 1-second window, you could return the current system timestamp instead.
-
-    // But there's a risk: If you do that, the activity that happened during that 1-second failure is permanently lost. By retrying with the old timestamp, we at least allow the driver to give us those samples later, ensuring our average utilization is informed by the "missing" time.
-
-    // Get the latest timestamp from samples or keep the current one
-    let next_timestamp = stats.iter().map(|s| s.timestamp).max().unwrap_or(timestamp);
-
-    // println!("{:?}", stats);
-
-    // Filter samples for this PID
+    // Filter samples for the target PID and compute average SM utilization.
     let pid_samples: Vec<_> = stats.iter().filter(|s| s.pid == pid).collect();
 
     let process_util = if pid_samples.is_empty() {
         0.0
     } else {
-        // Average the utilization across all samples in this period
         let sum: u64 = pid_samples.iter().map(|s| s.sm_util as u64).sum();
-        (sum as f64 / pid_samples.len() as f64) / 100.0
+        (sum as f64 / pid_samples.len() as f64) / 100.0 // Normalize % → 0.0–1.0
     };
 
-
+    // Compute total GPU power from energy counter delta.
+    // Handle the rare case where the counter wraps or resets.
     let delta_energy_mj = if energy_2 >= energy_1 {
         energy_2 - energy_1
     } else {
-        // Handle wraparound. NVML total energy is usually 64-bit, but some drivers
-        // might report 32-bit values or reset.
-        println!("Warning: GPU energy counter wrapped or reset.");
-        energy_2 // Minimum delta we can assume is the new value
+        eprintln!("Warning: GPU energy counter wrapped or reset.");
+        energy_2 // Conservative: use only the post-reset value
     };
-//The code detects 200 < 1,000,000 and enters the else block:
 
-// Delta: 200 mJ (It assumes the 200 mJ used since the reset is the safest delta).
-// Power: 200 / 1000 / 1.0 = 0.2 Watts.
-// EcoCode UI: Displays a very low power usage for that single second, keeping your data clean and physically accurate.
-
+    // mJ → J (÷1000), then J / s = Watts
     let total_gpu_power_w = delta_energy_mj / 1000.0 / interval_secs;
+
+    // Attribute a fraction of total GPU power to this process
     let process_gpu_power_w = total_gpu_power_w * process_util;
 
     (process_gpu_power_w, process_util * 100.0, next_timestamp)

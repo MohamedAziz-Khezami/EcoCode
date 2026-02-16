@@ -1,50 +1,37 @@
 //! CPU energy monitoring module using Intel RAPL (Running Average Power Limit).
 //!
 //! This module provides functionality to read CPU energy consumption from the system's
-//! Intel RAPL interface. Energy values are measured in microjoules.
+//! Intel RAPL interface. Energy values are measured in microjoules (µJ).
+//!
+//! # Prerequisites
+//!
+//! The RAPL energy file must be readable. Grant read access with:
+//! ```sh
+//! sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
+//! ```
 
-use crate::sensor::RAPL_PATH;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
-/// Refreshes and retrieves the current energy consumption from the Intel RAPL interface.
+/// Reads the current cumulative energy consumption from the Intel RAPL interface.
 ///
-/// This function reads the energy consumption file from the Intel RAPL power monitoring
-/// subsystem, which tracks CPU energy usage in microjoules. It requires elevated privileges
-/// (sudo) to access the system file.
+/// This function re-reads the RAPL sysfs file by seeking back to the start,
+/// making it efficient for repeated polling without reopening the file.
 ///
 /// # Returns
 ///
-/// `Result<usize, Box<dyn Error>>` - The energy consumption in microjoules, or an error
-/// if the file could not be read or parsed.
+/// The cumulative energy consumption in **microjoules (µJ)** since system boot.
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The sudo command fails or returns non-zero status
-/// - The file cannot be read due to permission issues
-/// - The energy value cannot be parsed as a valid integer
-///
-/// # Example
-///
-/// ```no_run
-/// use sensor::energy::refresh_energy;
-///
-/// let energy = refresh_energy()?;
-/// println!("Energy consumed: {} microjoules", energy);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
+/// Returns an error if the file cannot be seeked, read, or parsed.
 ///
 /// # Note
 ///
-/// - This function requires the program to be run with sudo privileges
-/// - Energy values are cumulative and represent total consumption since system boot
-/// - Call this function periodically to calculate energy consumed during a time period
+/// Energy values are cumulative — take two readings and compute the delta
+/// to get the energy consumed during a specific interval.
 pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>> {
-    // Parse the energy consumption from the file (in microjoules)
-    //sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
-
     rapl_file.seek(SeekFrom::Start(0))?;
 
     let mut buffer = String::new();
@@ -52,7 +39,5 @@ pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>
 
     let energy_consumed = buffer.trim().parse::<f64>()?;
 
-    // dbg!(energy_consumed);
-
-    Ok(energy_consumed) //energy in microjoules
+    Ok(energy_consumed)
 }
