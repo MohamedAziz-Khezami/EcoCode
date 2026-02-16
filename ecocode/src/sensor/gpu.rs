@@ -114,5 +114,5 @@ pub fn get_gpu_energy_by_pid(
     let total_gpu_power_w = delta_energy_mj / 1000.0 / interval_secs;
     let process_gpu_power_w = total_gpu_power_w * process_util;
 
-    (process_gpu_power_w, process_util * 100.0, next_timestamp)
+    (process_gpu_power_w, (process_util * 100.0).round_ties_even(), next_timestamp)
 }
