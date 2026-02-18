@@ -6,7 +6,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 
-use crate::exporter::{Exporter, ExporterType};
+use crate::exporter::{Exporter, ExporterType, Record};
 
 /// Exports records to a SQLite database file.
 ///
@@ -33,7 +33,7 @@ impl SqliteExporter {
             "CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY,
                 pid INTEGER,
-                timestamp INTEGER,
+                timestamp TEXT,
                 cpu_usage REAL,
                 cpu_energy REAL,
                 gpu_usage REAL,
@@ -55,7 +55,7 @@ impl Exporter for SqliteExporter {
 
     async fn add_record(
         &mut self,
-        record: super::Record,
+        record: Record,
     ) -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(
             "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy)

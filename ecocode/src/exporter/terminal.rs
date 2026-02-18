@@ -27,16 +27,16 @@ impl Exporter for TerminalExporter {
 
     async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("\n[TERMINAL EXPORT]");
-        println!("\n{}", "=".repeat(80));
+        println!("\n{}", "=".repeat(128));
         println!(
-            "{:<5} {:<8} {:<12} {:<10} {:<10} {:<12} {:<12}",
+            "{:<5} {:<8} {:<32} {:<10} {:<10} {:<12} {:<12}",
             "ID", "PID", "Timestamp", "CPU%", "CPU(W)", "GPU%", "GPU(W)"
         );
-        println!("{}", "-".repeat(80));
+        println!("{}", "-".repeat(128));
 
         for record in &self.records {
             println!(
-                "{:<5} {:<8} {:<12} {:<10.2} {:<10.2} {:<12.3} {:<12.3}",
+                "{:<5} {:<8} {:<32} {:<10.2} {:<10.2} {:<12.3} {:<12.3}",
                 record.id,
                 record.pid,
                 record.timestamp,
@@ -46,7 +46,7 @@ impl Exporter for TerminalExporter {
                 record.gpu_energy
             );
         }
-        println!("{}\n", "=".repeat(80));
+        println!("{}\n", "=".repeat(128));
 
         Ok(())
     }
@@ -56,17 +56,17 @@ impl Exporter for TerminalExporter {
         let r = self.records.last().unwrap();
 
         if self.first_record {
-            println!("\n{}", "=".repeat(80));
+            println!("\n{}", "=".repeat(128));
             println!(
-                "{:<5} {:<8} {:<12} {:<10} {:<10} {:<12} {:<12}",
+                "{:<5} {:<8} {:<32} {:<10} {:<10} {:<12} {:<12}",
                 "ID", "PID", "Timestamp", "CPU%", "CPU(W)", "GPU%", "GPU(W)"
             );
-            println!("{}", "-".repeat(80));
+            println!("{}", "-".repeat(128));
             self.first_record = false;
         }
 
         println!(
-            "{:<5} {:<8} {:<12} {:<10.2} {:<10.2} {:<12.3} {:<12.3}",
+            "{:<5} {:<8} {:<32} {:<10.2} {:<10.2} {:<12.3} {:<12.3}",
             r.id, r.pid, r.timestamp, r.cpu_usage, r.cpu_energy, r.gpu_usage, r.gpu_energy
         );
 

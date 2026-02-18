@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 pub struct Record {
     pub id: u32,
     pub pid: u32,
-    pub timestamp: i64,  // milliseconds since epoch
+    pub timestamp: String, // RFC3339 UTC timestamp
     pub cpu_usage: f64,  // percentage (0-100)
     pub cpu_energy: f64, // watts
     pub gpu_usage: f64,  // percentage (0-100)
@@ -32,7 +32,7 @@ impl Record {
     pub fn new(
         id: u32,
         pid: u32,
-        timestamp: i64,
+        timestamp: String,
         cpu_usage: f64,
         cpu_energy: f64,
         gpu_usage: f64,
@@ -52,7 +52,7 @@ impl Record {
         vec![
             self.id.to_string(),
             self.pid.to_string(),
-            self.timestamp.to_string(),
+            self.timestamp.clone(),
             self.cpu_usage.to_string(),
             self.cpu_energy.to_string(),
             self.gpu_usage.to_string(),
@@ -67,6 +67,7 @@ pub enum ExporterType {
     Csv,
     Json,
     Sqlite,
+    Online, 
     Prometheus,
 }
 

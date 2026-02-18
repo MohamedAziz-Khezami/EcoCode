@@ -1,9 +1,10 @@
 use clap::Parser;
 use nvml_wrapper::Nvml;
+use sqlx::types::chrono::Utc;
 use std::fs::File;
 use std::io::BufReader;
 use std::process::Command;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessesToUpdate, RefreshKind, System};
 use tokio::time::sleep;
 mod exporter;
@@ -17,6 +18,7 @@ use exporter::csv::CsvExporter;
 use exporter::json::JsonExporter;
 use exporter::sqlite::SqliteExporter;
 use exporter::terminal::TerminalExporter;
+use exporter::online::OnlineExporter;
 use exporter::{Exporter, Record};
 
 #[derive(Parser, Debug)]
@@ -50,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
         "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap()).await?),
+        "online" => Box::new(OnlineExporter::new(args.file.unwrap()).await?),
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());
@@ -138,9 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let record = Record::new(
             iteration,
             pid.as_u32(),
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_millis() as i64,
+            Utc::now().to_rfc3339(),
             cpu_usage as f64,
             cpu_energy_per_pid,
             gpu_util_pid,
