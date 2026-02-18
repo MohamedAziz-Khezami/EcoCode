@@ -9,9 +9,11 @@
 
 pub mod csv;
 pub mod json;
+pub mod online;
 pub mod sqlite;
 pub mod terminal;
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 /// Represents a single measurement record
@@ -69,9 +71,10 @@ pub enum ExporterType {
 }
 
 /// Trait for different export formats
+#[async_trait(?Send)]
 pub trait Exporter {
     fn exporter_type(&self) -> ExporterType; // Returns "terminal", "csv", "json", etc.
-    fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>>;
-    fn export(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>>;
+    async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 }

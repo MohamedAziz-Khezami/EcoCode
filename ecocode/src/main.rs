@@ -3,9 +3,9 @@ use nvml_wrapper::Nvml;
 use std::fs::File;
 use std::io::BufReader;
 use std::process::Command;
-use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use sysinfo::{Pid, ProcessesToUpdate, RefreshKind, System};
+use tokio::time::sleep;
 mod exporter;
 mod sensor;
 use sensor::RAPL_PATH;
@@ -14,9 +14,9 @@ use sensor::gpu::DEFAULT_GPU_DEVICE_INDEX;
 use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
 
 use exporter::csv::CsvExporter;
-use exporter::terminal::TerminalExporter;
 use exporter::json::JsonExporter;
 use exporter::sqlite::SqliteExporter;
+use exporter::terminal::TerminalExporter;
 use exporter::{Exporter, Record};
 
 #[derive(Parser, Debug)]
@@ -38,7 +38,8 @@ struct Args {
     command: Vec<String>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = Args::parse();
 
     let interval = args.interval;
@@ -48,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "terminal" => Box::new(TerminalExporter::new()),
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
-        "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap())),
+        "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap()).await?),
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());
@@ -68,24 +69,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cpu_usage;
 
     // --- NVML / GPU setup ---
-    let nvml = match Nvml::init() {
-        Ok(n) => n,
-        Err(e) => {
-            eprintln!("Error initializing NVML: {}", e);
-            return Err(Box::new(e));
-        }
-    };
+    let nvml = Nvml::init()?;
     // Get the GPU device (default index 0)
-    let device = match nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("Error getting GPU device: {}", e);
-            return Err(Box::new(e));
-        }
-    };
+    let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
     // --- Measurement state ---
     let mut iteration = 0;
-    
+
     // Initial timestamp in microseconds for NVML (0 targets all samples initially)
     let mut timestamp: u64 = 0;
 
@@ -98,14 +87,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cpu_energy_1 = get_energy(&mut rapl_file)?;
     let mut gpu_energy_1 = get_gpu_energy(&device)?;
 
-
     // --- Main measurement loop ---
     loop {
-
         iteration += 1;
 
         let start_time = Instant::now();
-        thread::sleep(Duration::from_secs(interval)); // Sleep for the specified interval
+        sleep(Duration::from_secs(interval)).await; // Sleep for the specified interval
 
         // Refresh process data
         sys.refresh_processes(ProcessesToUpdate::All, true);
@@ -119,7 +106,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // to get a normalized 0–100% value for the whole system
             sys.process(pid).unwrap().cpu_usage() / num_cores as f32
         };
-        
 
         // --- CPU energy calculation ---
         let cpu_energy_2 = get_energy(&mut rapl_file).unwrap();
@@ -148,7 +134,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gpu_energy_1 = gpu_energy_2;
         timestamp = next_timestamp;
 
-
         // --- Export the measurement record ---
         let record = Record::new(
             iteration,
@@ -161,8 +146,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             gpu_util_pid,
             gpu_power_pid,
         );
-        exporter.add_record(record)?;
-        exporter.export_line()?;
+        exporter.add_record(record).await?;
+        exporter.export_line().await?;
 
         if cpu_usage <= 0.0 && gpu_util_pid <= 0.0 && gpu_power_pid <= 0.0 {
             println!("Process finished");
@@ -171,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Export final results
-    exporter.export()?;
+    exporter.export().await?;
 
     Ok(())
 }

@@ -1,7 +1,10 @@
 //! SQLite exporter — persists measurement records into a SQLite database.
 
-
-use rusqlite::Connection;
+use async_trait::async_trait;
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 use crate::exporter::{Exporter, ExporterType};
 
@@ -9,55 +12,71 @@ use crate::exporter::{Exporter, ExporterType};
 ///
 /// The `records` table is created automatically if it does not exist.
 pub struct SqliteExporter {
-    db: Connection,
+    db: SqlitePool,
 }
 
 impl SqliteExporter {
-    pub fn new(db_path: String) -> SqliteExporter {
-        SqliteExporter {
-            db: Connection::open(db_path).unwrap(), //open or create a db
-        }
+    pub async fn new(db_path: String) -> Result<SqliteExporter, Box<dyn std::error::Error>> {
+        let db_url = if db_path.starts_with("sqlite:") {
+            db_path
+        } else {
+            format!("sqlite://{db_path}")
+        };
+
+        let connect_options: SqliteConnectOptions = db_url.parse()?;
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(connect_options.create_if_missing(true))
+            .await?;
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY,
+                pid INTEGER,
+                timestamp INTEGER,
+                cpu_usage REAL,
+                cpu_energy REAL,
+                gpu_usage REAL,
+                gpu_energy REAL
+            )",
+        )
+        .execute(&db)
+        .await?;
+
+        Ok(SqliteExporter { db })
     }
 }
 
+#[async_trait(?Send)]
 impl Exporter for SqliteExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Sqlite
     }
 
-    fn add_record(&mut self, record: super::Record) -> Result<(), Box<dyn std::error::Error>> {
-        let sql = "CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY,
-            pid INTEGER,
-            timestamp INTEGER,
-            cpu_usage REAL,
-            cpu_energy REAL,
-            gpu_usage REAL,
-            gpu_energy REAL
-        )";
-
-        self.db.execute(sql, ())?;
-
-        let sql = "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy) VALUES (?, ?, ?, ?, ?, ?)";
-        self.db.execute(
-            sql,
-            (
-                record.pid,
-                record.timestamp,
-                record.cpu_usage,
-                record.cpu_energy,
-                record.gpu_usage,
-                record.gpu_energy,
-            ),
-        )?;
+    async fn add_record(
+        &mut self,
+        record: super::Record,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query(
+            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(record.pid as i64)
+        .bind(record.timestamp)
+        .bind(record.cpu_usage)
+        .bind(record.cpu_energy)
+        .bind(record.gpu_usage)
+        .bind(record.gpu_energy)
+        .execute(&self.db)
+        .await?;
 
         Ok(())
     }
 
-    fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
-    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }

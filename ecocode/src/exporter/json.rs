@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 
 use crate::exporter::{Exporter, ExporterType, Record};
+use async_trait::async_trait;
 
 pub struct JsonExporter {
     pub file_path: String,
@@ -23,12 +24,13 @@ impl JsonExporter {
     }
 }
 
+#[async_trait(?Send)]
 impl Exporter for JsonExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Json
     }
 
-    fn add_record(&mut self, record: Record) -> Result<(), Box<dyn Error>> {
+    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn Error>> {
         // Write a comma if it's not the first record
         if !self.first_record {
             self.writer.write_all(b",")?; // Add a comma between records
@@ -44,7 +46,7 @@ impl Exporter for JsonExporter {
 
         Ok(())
     }
-    fn export(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn export(&mut self) -> Result<(), Box<dyn Error>> {
         // Write the closing bracket for the JSON array
         self.writer.write_all(b"]")?;
         self.writer.flush()?;
@@ -53,7 +55,7 @@ impl Exporter for JsonExporter {
         println!("Records found in  File: {}", self.file_path);
         Ok(())
     }
-    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }

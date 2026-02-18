@@ -1,6 +1,7 @@
 use std::fs::File;
 
 use crate::exporter::{Exporter, ExporterType, Record};
+use async_trait::async_trait;
 use csv::Writer;
 
 pub struct CsvExporter {
@@ -21,11 +22,12 @@ impl CsvExporter {
     }
 }
 
+#[async_trait(?Send)]
 impl Exporter for CsvExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Csv
     }
-    fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
+    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         if self.first_record {
             self.writer
                 .write_record(vec![
@@ -45,12 +47,12 @@ impl Exporter for CsvExporter {
         Ok(())
     }
 
-    fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("\n[CSV EXPORT]");
         println!("Records found in  File: {}", self.file_path);
         Ok(())
     }
-    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }

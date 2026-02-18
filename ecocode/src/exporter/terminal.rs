@@ -1,4 +1,5 @@
 use crate::exporter::{Exporter, ExporterType, Record};
+use async_trait::async_trait;
 
 pub struct TerminalExporter {
     records: Vec<Record>,
@@ -14,16 +15,17 @@ impl TerminalExporter {
     }
 }
 
+#[async_trait(?Send)]
 impl Exporter for TerminalExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Terminal
     }
-    fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
+    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         self.records.push(record);
         Ok(())
     }
 
-    fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("\n[TERMINAL EXPORT]");
         println!("\n{}", "=".repeat(80));
         println!(
@@ -49,7 +51,7 @@ impl Exporter for TerminalExporter {
         Ok(())
     }
 
-    fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         //export the last record
         let r = self.records.last().unwrap();
 
