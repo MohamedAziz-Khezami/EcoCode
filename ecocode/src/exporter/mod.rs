@@ -22,10 +22,10 @@ pub struct Record {
     pub id: u32,
     pub pid: u32,
     pub timestamp: String, // RFC3339 UTC timestamp
-    pub cpu_usage: f64,  // percentage (0-100)
-    pub cpu_energy: f64, // watts
-    pub gpu_usage: f64,  // percentage (0-100)
-    pub gpu_energy: f64, // watts
+    pub cpu_usage: f64,    // percentage (0-100)
+    pub cpu_energy: f64,   // watts
+    pub gpu_usage: f64,    // percentage (0-100)
+    pub gpu_energy: f64,   // watts
 }
 
 impl Record {
@@ -67,7 +67,7 @@ pub enum ExporterType {
     Csv,
     Json,
     Sqlite,
-    Online, 
+    Online,
     Prometheus,
 }
 

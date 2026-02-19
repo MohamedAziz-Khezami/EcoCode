@@ -16,10 +16,11 @@ use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
 
 use exporter::csv::CsvExporter;
 use exporter::json::JsonExporter;
+use exporter::online::OnlineExporter;
 use exporter::sqlite::SqliteExporter;
 use exporter::terminal::TerminalExporter;
-use exporter::online::OnlineExporter;
 use exporter::{Exporter, Record};
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -52,10 +53,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
         "sqlite" => Box::new(SqliteExporter::new(args.file.unwrap()).await?),
-        "online" => Box::new(OnlineExporter::new(args.file.unwrap()).await?),
+        "online" => Box::new(OnlineExporter::new().await?), // Does't need an input, it will read the .env
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());
+
+
+    //TODO: before running the command run sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
+    
+
 
     // --- Spawn the target process ---
     let command = Command::new(&args.command[0])

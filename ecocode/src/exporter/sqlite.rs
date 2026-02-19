@@ -1,4 +1,4 @@
-//! SQLite exporter — persists measurement records into a SQLite database.
+// SQLite exporter — persists measurement records into a SQLite database.
 
 use async_trait::async_trait;
 use sqlx::{
@@ -53,10 +53,7 @@ impl Exporter for SqliteExporter {
         ExporterType::Sqlite
     }
 
-    async fn add_record(
-        &mut self,
-        record: Record,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(
             "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy)
              VALUES (?, ?, ?, ?, ?, ?)",

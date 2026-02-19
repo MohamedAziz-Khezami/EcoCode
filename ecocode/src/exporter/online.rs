@@ -1,20 +1,25 @@
 // This will be the exporter for online platform EcoCode.com to save run informations online.
 // It will push the data to TimeScaleDB to be stored on the cloud.
 
-use sqlx::{postgres::PgPool, Error};
+use sqlx::{Error, postgres::PgPool};
 
-use async_trait::async_trait;
+use dotenv::dotenv;
+use std::env;
+
 use crate::exporter::{Exporter, ExporterType, Record};
+use async_trait::async_trait;
 
 pub struct OnlineExporter {
-    db: PgPool
+    db: PgPool,
 }
 
-
 impl OnlineExporter {
-   pub async fn new(db_url: String) -> Result<OnlineExporter, Error> {
+    pub async fn new() -> Result<OnlineExporter, Error> {
+        dotenv().ok();
+        let db_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env file");
+
         let db = PgPool::connect(&db_url).await?; // that's why it needs async
-        
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS records (
                 id BIGSERIAL PRIMARY KEY,
@@ -29,39 +34,12 @@ impl OnlineExporter {
         .execute(&db)
         .await?;
 
-        // Migrate legacy schemas that stored epoch millis as INTEGER/BIGINT.
-        sqlx::query(
-            r#"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_schema = current_schema()
-                      AND table_name = 'records'
-                      AND column_name = 'timestamp'
-                      AND data_type IN ('integer', 'bigint')
-                ) THEN
-                    ALTER TABLE records
-                    ALTER COLUMN timestamp TYPE TIMESTAMPTZ
-                    USING to_timestamp(timestamp::double precision / 1000.0);
-                END IF;
-            END
-            $$;
-            "#,
-        )
-        .execute(&db)
-        .await?;
-
-
-        
         Ok(OnlineExporter { db })
     }
 }
 
 #[async_trait(?Send)]
 impl Exporter for OnlineExporter {
-
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Online
     }
@@ -80,7 +58,6 @@ impl Exporter for OnlineExporter {
         .execute(&self.db)
         .await?;
 
-        
         Ok(())
     }
 

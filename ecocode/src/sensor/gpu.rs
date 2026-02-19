@@ -4,14 +4,12 @@
 //! using the NVIDIA Management Library (NVML) wrapper. It can retrieve both system-wide
 //! and per-process GPU metrics.
 
-use core::time;
-
 use nvml_wrapper::{Device, Nvml};
 
 /// Default NVIDIA GPU device index to monitor.
 pub const DEFAULT_GPU_DEVICE_INDEX: u32 = 0;
 
-pub fn get_gpu_info() -> Result<(), Box<dyn std::error::Error>> {
+pub fn _get_gpu_info() -> Result<(), Box<dyn std::error::Error>> {
     let nvml = Nvml::init()?;
     let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
     let name = device.name()?;
@@ -20,7 +18,7 @@ pub fn get_gpu_info() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn get_gpu_power() -> Result<u32, Box<dyn std::error::Error>> {
+pub fn _get_gpu_power() -> Result<u32, Box<dyn std::error::Error>> {
     let nvml = Nvml::init()?;
     let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
     let power = device.power_usage()?; // in mW
@@ -61,7 +59,10 @@ pub fn get_gpu_energy_by_pid(
     let stats = match device.process_utilization_stats(timestamp) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Error fetching process utilization for PID {}: {}, maybe it stopped running on the GPU.", pid, e);
+            eprintln!(
+                "Error fetching process utilization for PID {}: {}, maybe it stopped running on the GPU.",
+                pid, e
+            );
             return (0.0, 0.0, timestamp); // Return current timestamp to retry next time
         }
     };
@@ -96,7 +97,6 @@ pub fn get_gpu_energy_by_pid(
         (sum as f64 / pid_samples.len() as f64) / 100.0
     };
 
-
     let delta_energy_mj = if energy_2 >= energy_1 {
         energy_2 - energy_1
     } else {
@@ -105,14 +105,21 @@ pub fn get_gpu_energy_by_pid(
         println!("Warning: GPU energy counter wrapped or reset.");
         energy_2 // Minimum delta we can assume is the new value
     };
-//The code detects 200 < 1,000,000 and enters the else block:
+    //The code detects 200 < 1,000,000 and enters the else block:
 
-// Delta: 200 mJ (It assumes the 200 mJ used since the reset is the safest delta).
-// Power: 200 / 1000 / 1.0 = 0.2 Watts.
-// EcoCode UI: Displays a very low power usage for that single second, keeping your data clean and physically accurate.
+    // Delta: 200 mJ (It assumes the 200 mJ used since the reset is the safest delta).
+    // Power: 200 / 1000 / 1.0 = 0.2 Watts.
+    // EcoCode UI: Displays a very low power usage for that single second, keeping your data clean and physically accurate.
 
     let total_gpu_power_w = delta_energy_mj / 1000.0 / interval_secs;
     let process_gpu_power_w = total_gpu_power_w * process_util;
 
-    (process_gpu_power_w, (process_util * 100.0).round_ties_even(), next_timestamp)
+    (
+        process_gpu_power_w,
+        (process_util * 100.0).round_ties_even(),
+        next_timestamp,
+    )
 }
+
+
+//TODO: Make it modular

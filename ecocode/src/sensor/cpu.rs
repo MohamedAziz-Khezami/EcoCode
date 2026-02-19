@@ -3,10 +3,9 @@
 //! This module provides functionality to read CPU energy consumption from the system's
 //! Intel RAPL interface. Energy values are measured in microjoules.
 
-use crate::sensor::RAPL_PATH;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 
 /// Refreshes and retrieves the current energy consumption from the Intel RAPL interface.
 ///
@@ -41,11 +40,11 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 /// - This function requires the program to be run with sudo privileges
 /// - Energy values are cumulative and represent total consumption since system boot
 /// - Call this function periodically to calculate energy consumed during a time period
-pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>> {
+pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>> { //fixme: give an array of files and run thread on them
     // Parse the energy consumption from the file (in microjoules)
     //sudo chmod +r /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
 
-    rapl_file.seek(SeekFrom::Start(0))?;
+   rapl_file.seek(SeekFrom::Start(0))?;
 
     let mut buffer = String::new();
     rapl_file.read_line(&mut buffer)?;
@@ -55,4 +54,10 @@ pub fn get_energy(rapl_file: &mut BufReader<File>) -> Result<f64, Box<dyn Error>
     // dbg!(energy_consumed);
 
     Ok(energy_consumed) //energy in microjoules
-}
+}//fix: Counter reset handle
+
+
+//TODO: Make it modular
+
+
+// open files(keep open) -> get energy using tokio -> close files
