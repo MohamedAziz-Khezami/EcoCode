@@ -10,7 +10,7 @@
 pub mod csv;
 pub mod json;
 pub mod online;
-pub mod sqlite;
+pub mod local;
 pub mod terminal;
 
 use async_trait::async_trait;
@@ -26,6 +26,11 @@ pub struct Record {
     pub cpu_energy: f64,   // watts
     pub gpu_usage: f64,    // percentage (0-100)
     pub gpu_energy: f64,   // watts
+    pub mem_usage: f64,  // percentage (0-100) Dram
+    pub mem_energy: f64, // watts
+    pub igpu_usage: f64, //igpu
+    pub igpu_energy: f64,
+
 }
 
 impl Record {
@@ -37,6 +42,10 @@ impl Record {
         cpu_energy: f64,
         gpu_usage: f64,
         gpu_energy: f64,
+        mem_usage: Option<f64>,
+        mem_energy: Option<f64>,
+        igpu_usage: Option<f64>,
+        igpu_energy: Option<f64>,
     ) -> Record {
         Record {
             id,
@@ -46,6 +55,10 @@ impl Record {
             cpu_energy,
             gpu_usage,
             gpu_energy,
+            mem_usage: mem_usage.unwrap_or(0.0),
+            mem_energy: mem_energy.unwrap_or(0.0),
+            igpu_usage: igpu_usage.unwrap_or(0.0),
+            igpu_energy: igpu_energy.unwrap_or(0.0),
         }
     }
     pub fn to_vec(&self) -> Vec<String> {
@@ -57,6 +70,8 @@ impl Record {
             self.cpu_energy.to_string(),
             self.gpu_usage.to_string(),
             self.gpu_energy.to_string(),
+            self.mem_usage.to_string(),
+            self.mem_energy.to_string(),
         ]
     }
 }
@@ -66,7 +81,7 @@ pub enum ExporterType {
     Terminal,
     Csv,
     Json,
-    Sqlite,
+    Local,
     Online,
     Prometheus,
 }

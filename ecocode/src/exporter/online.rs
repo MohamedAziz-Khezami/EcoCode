@@ -29,6 +29,8 @@ impl OnlineExporter {
                 cpu_energy DOUBLE PRECISION,
                 gpu_usage DOUBLE PRECISION,
                 gpu_energy DOUBLE PRECISION
+                mem_usage DOUBLE PRECISION,
+                mem_energy DOUBLE PRECISION
             )",
         )
         .execute(&db)
@@ -46,8 +48,8 @@ impl Exporter for OnlineExporter {
 
     async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(
-            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy)
-            VALUES ($1, $2::timestamptz, $3, $4, $5, $6)",
+            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy, mem_usage, mem_energy, igpu_usage, igpu_energy)
+            VALUES ($1, $2::timestamptz, $3, $4, $5, $6 , $7, $8, $9, $10)",
         )
         .bind(record.pid as i64)
         .bind(record.timestamp)
@@ -55,6 +57,10 @@ impl Exporter for OnlineExporter {
         .bind(record.cpu_energy)
         .bind(record.gpu_usage)
         .bind(record.gpu_energy)
+        .bind(record.mem_usage)
+        .bind(record.mem_energy)
+        .bind(record.igpu_usage)
+        .bind(record.igpu_energy)
         .execute(&self.db)
         .await?;
 

@@ -38,6 +38,10 @@ impl Exporter for CsvExporter {
                     "CPU(W)",
                     "GPU%",
                     "GPU(W)",
+                    "MEM%",
+                    "MEM(W)",
+                    "IGPU%",
+                    "IGPU(W)",
                 ])
                 .unwrap();
         }

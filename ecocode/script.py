@@ -39,9 +39,9 @@ def train(model, device, train_loader, optimizer, epoch):
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
-        if batch_idx % 100 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
-                  f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+        # if batch_idx % 100 == 0:
+            # print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
+            #       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
 def test(model, device, test_loader):
     model.eval()
@@ -66,8 +66,8 @@ def test(model, device, test_loader):
 
     test_loss /= len(test_loader.dataset)
 
-    print(f'\nTest set: Average loss: {test_loss:.44f}, Accuracy: {correct}/{len(test_loader.dataset)} '
-          f'({100. * correct / len(test_loader.dataset):.0f}%)\n')
+    # print(f'\nTest set: Average loss: {test_loss:.44f}, Accuracy: {correct}/{len(test_loader.dataset)} '
+    #       f'({100. * correct / len(test_loader.dataset):.0f}%)\n')
 
 def main():
     # Training settings
@@ -79,7 +79,7 @@ def main():
     use_cuda = torch.cuda.is_available()
 
     device = torch.device("cuda" if use_cuda else "cpu")
-    print(f"Using device: {device}")
+    # print(f"Using device: {device}")
 
     transform=transforms.Compose([
         transforms.ToTensor(),

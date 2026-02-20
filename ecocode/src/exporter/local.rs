@@ -16,12 +16,8 @@ pub struct SqliteExporter {
 }
 
 impl SqliteExporter {
-    pub async fn new(db_path: String) -> Result<SqliteExporter, Box<dyn std::error::Error>> {
-        let db_url = if db_path.starts_with("sqlite:") {
-            db_path
-        } else {
-            format!("sqlite://{db_path}")
-        };
+    pub async fn new() -> Result<SqliteExporter, Box<dyn std::error::Error>> {
+        let db_url = "sqlite://ecocodeDB.db"; // You can change this to a custom path if needed
 
         let connect_options: SqliteConnectOptions = db_url.parse()?;
         let db = SqlitePoolOptions::new()
@@ -30,14 +26,29 @@ impl SqliteExporter {
             .await?;
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS records (
+            "
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS runs (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                project_id INTEGER,
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+            );
+            CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY,
                 pid INTEGER,
                 timestamp TEXT,
                 cpu_usage REAL,
                 cpu_energy REAL,
                 gpu_usage REAL,
-                gpu_energy REAL
+                gpu_energy REAL,
+                mem_usage REAL,
+                mem_energy REAL,
+                igpu_usage REAL,
+                igpu_energy REAL
             )",
         )
         .execute(&db)
@@ -50,13 +61,13 @@ impl SqliteExporter {
 #[async_trait(?Send)]
 impl Exporter for SqliteExporter {
     fn exporter_type(&self) -> ExporterType {
-        ExporterType::Sqlite
+        ExporterType::Local
     }
 
     async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(
-            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy, mem_usage, mem_energy, igpu_usage, igpu_energy)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(record.pid as i64)
         .bind(record.timestamp)
@@ -64,6 +75,10 @@ impl Exporter for SqliteExporter {
         .bind(record.cpu_energy)
         .bind(record.gpu_usage)
         .bind(record.gpu_energy)
+        .bind(record.mem_usage)
+        .bind(record.mem_energy)
+        .bind(record.igpu_usage)
+        .bind(record.igpu_energy)
         .execute(&self.db)
         .await?;
 
@@ -77,3 +92,4 @@ impl Exporter for SqliteExporter {
         Ok(())
     }
 }
+
