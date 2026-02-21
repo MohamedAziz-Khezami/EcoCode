@@ -16,7 +16,7 @@ pub struct SqliteExporter {
 }
 
 impl SqliteExporter {
-    pub async fn new() -> Result<SqliteExporter, Box<dyn std::error::Error>> {
+    pub async fn new(project_name: &str) -> Result<SqliteExporter, Box<dyn std::error::Error>> {
         let db_url = "sqlite://ecocodeDB.db"; // You can change this to a custom path if needed
 
         let connect_options: SqliteConnectOptions = db_url.parse()?;
@@ -31,6 +31,9 @@ impl SqliteExporter {
                 id INTEGER PRIMARY KEY,
                 name TEXT UNIQUE
             );
+
+            INSERT OR IGNORE INTO projects (name) VALUES (?); 
+
             CREATE TABLE IF NOT EXISTS runs (
                 id INTEGER PRIMARY KEY,
                 name TEXT,
@@ -51,6 +54,7 @@ impl SqliteExporter {
                 igpu_energy REAL
             )",
         )
+        .bind(project_name)
         .execute(&db)
         .await?;
 
@@ -92,4 +96,3 @@ impl Exporter for SqliteExporter {
         Ok(())
     }
 }
-

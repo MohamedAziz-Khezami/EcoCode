@@ -61,7 +61,17 @@ impl Exporter for TerminalExporter {
             println!("\n{}", "=".repeat(128));
             println!(
                 "{:<5} {:<8} {:<40} {:<10} {:<10} {:<12} {:<12} {:<12} {:<12} {:<12} {:<12}",
-                "ID", "PID", "Timestamp", "CPU%", "CPU(W)", "GPU%", "GPU(W)", "MEM%", "MEM(W)", "IGPU%", "IGPU(W)"
+                "ID",
+                "PID",
+                "Timestamp",
+                "CPU%",
+                "CPU(W)",
+                "GPU%",
+                "GPU(W)",
+                "MEM%",
+                "MEM(W)",
+                "IGPU%",
+                "IGPU(W)"
             );
             println!("{}", "-".repeat(128));
             self.first_record = false;
@@ -69,7 +79,17 @@ impl Exporter for TerminalExporter {
 
         println!(
             "{:<5} {:<8} {:<40} {:<10.2} {:<10.2} {:<12.3} {:<12.3} {:<12.3} {:<12.3} {:<12.3} {:<12.3}",
-            r.id, r.pid, r.timestamp, r.cpu_usage, r.cpu_energy, r.gpu_usage, r.gpu_energy, r.mem_usage, r.mem_energy, r.igpu_usage, r.igpu_energy
+            r.id,
+            r.pid,
+            r.timestamp,
+            r.cpu_usage,
+            r.cpu_energy,
+            r.gpu_usage,
+            r.gpu_energy,
+            r.mem_usage,
+            r.mem_energy,
+            r.igpu_usage,
+            r.igpu_energy
         );
 
         Ok(())

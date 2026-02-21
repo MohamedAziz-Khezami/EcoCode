@@ -121,5 +121,4 @@ pub fn get_gpu_energy_by_pid(
     )
 }
 
-
 //TODO: Make it modular

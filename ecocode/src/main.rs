@@ -1,38 +1,34 @@
 use clap::Parser;
 use nvml_wrapper::Nvml;
 use sqlx::types::chrono::Utc;
-use std::fs::File;
-use std::io::BufReader;
 use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use sysinfo::{Pid, ProcessesToUpdate, RefreshKind, System};
-use tokio::time::sleep;
+use tokio::time::{self, Instant, MissedTickBehavior};
 mod exporter;
 mod sensor;
 use sensor::RAPL_PATH;
 
-use sensor::rapl::scan_rapl_files;
 use sensor::gpu::DEFAULT_GPU_DEVICE_INDEX;
 use sensor::gpu::{get_gpu_energy, get_gpu_energy_by_pid};
+use sensor::rapl::scan_rapl_files;
 
 use exporter::csv::CsvExporter;
 use exporter::json::JsonExporter;
-use exporter::online::OnlineExporter;
 use exporter::local::SqliteExporter;
+use exporter::online::OnlineExporter;
 use exporter::terminal::TerminalExporter;
 use exporter::{Exporter, Record};
 
 use crate::sensor::rapl::{delta_cpu_energy_per_pid_w, get_all_energies};
 
-
-
+// --- Command-line argument parsing ---
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     //project name
     #[arg(short, long, default_value = "ecocode")]
     project: String,
-
 
     /// Output format: "terminal" or "csv"
     #[arg(short, long, default_value = "terminal")]
@@ -56,36 +52,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let interval = args.interval;
     let output = args.output.to_lowercase();
+    let project_name = args.project;
 
-    
-    //TODO: before running the command run sudo chmod -R +r /sys/class/powercap/intel-rapl/intel-rapl:0/  
+    // TODO: before running the command run sudo chmod -R +r /sys/class/powercap/intel-rapl/
     //promp the user for their password to access
     let _access = Command::new("sudo")
         .arg("chmod")
         .arg("-R")
         .arg("+r")
-        .arg(RAPL_PATH) //will be changed for multi-socket support
+        .arg(RAPL_PATH) // FIXED: will be changed for multi-socket support
         .status();
 
-    
     // --- Exporter setup ---
-    let mut exporter: Box<dyn Exporter> = match output.as_str(){
+    let mut exporter: Box<dyn Exporter> = match output.as_str() {
         "terminal" => Box::new(TerminalExporter::new()),
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
-        "local" => Box::new(SqliteExporter::new().await?),
+        "local" => Box::new(SqliteExporter::new(&project_name).await?),
         "online" => Box::new(OnlineExporter::new().await?), // Does't need an input, it will read the .env
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());
 
-
-
-    //TODO: open sys/class/powercap dir and look for intel-rapl files and make a buffer for them 
+    // TODO: open sys/class/powercap dir and look for intel-rapl files and make a buffer for them
     // let rapl_files = scan_rapl_files();
-
     let mut rapl_readers = scan_rapl_files()?; //sorted by domain
-    // dbg!(&rapl_readers);
+    
 
     // --- Spawn the target process ---
     let command = Command::new(&args.command[0])
@@ -93,51 +85,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .spawn()
         .expect("failed to execute process");
 
+    // Get the PID of the spawned process    
     let pid = Pid::from(command.id() as usize);
 
     // --- System setup ---
     let mut sys = System::new_with_specifics(RefreshKind::everything());
     let num_cores = sys.cpus().len();
     let sys_memo = sys.total_memory();
-    dbg!(sys_memo);
     let mut cpu_usage;
     let mut mem_usage;
-
 
     // --- NVML / GPU setup ---
     let nvml = Nvml::init()?;
     // Get the GPU device (default index 0)
     let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
+
     // --- Measurement state ---
     let mut iteration = 0;
-
+    
     // Initial timestamp in microseconds for NVML (0 targets all samples initially)
     let mut timestamp: u64 = 0;
 
-    //TODO: remove it and replace it with the multiple file reader
-    // let mut rapl_file = BufReader::new(File::open(RAPL_PATH)?);
-     
     // Take initial energy readings before the loop so that the second reading
     // of each iteration can be reused as the first reading of the next one.
+    // for all the rapl domains (cpu, dram, igpu) and sockets (in case of multisocket servers)
     sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
     let mut cpu_energy_1 = get_all_energies(&mut rapl_readers)?; //energies of the cpu sockets
-    // dbg!(&cpu_energy_1);
-    //vector of this:
-    // pub struct RAPL_Energy {
-    //     pub Socket: i16,
-    //     pub Domaine: String, // cpu, dram, igpu
-    //     pub Energy: f64
-    // }
 
 
     let mut gpu_energy_1 = get_gpu_energy(&device)?;
+
+    let period = Duration::from_secs(interval);
+    let mut last_sample = Instant::now();
+    let mut ticker = time::interval_at(last_sample + period, period);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     // --- Main measurement loop ---
     loop {
         iteration += 1;
 
-        let start_time = Instant::now();
-        sleep(Duration::from_secs(interval)).await; // Sleep for the specified interval
+        ticker.tick().await;
+        let now = Instant::now();
+        let elapsed_secs = now.duration_since(last_sample).as_secs_f64();
+        dbg!(&elapsed_secs);
+        last_sample = now;
 
         // Refresh process data
         sys.refresh_processes(ProcessesToUpdate::All, true);
@@ -151,36 +142,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // to get a normalized 0–100% value for the whole system
             sys.process(pid).unwrap().cpu_usage() / num_cores as f32
         };
-        mem_usage = (sys.process(pid).unwrap().memory() as f64 / sys_memo as f64)  * 100.0;
-     
+        mem_usage = (sys.process(pid).unwrap().memory() as f64 / sys_memo as f64) * 100.0;
+
         // --- CPU energy calculation ---
         let cpu_energy_2 = get_all_energies(&mut rapl_readers)?;
 
-
-
-
-        let elapsed_secs = start_time.elapsed().as_secs_f64();
-
         // dbg!(elapsed_secs);
 
-        let delta_cpu_energy_w =
-            delta_cpu_energy_per_pid_w(&cpu_energy_1, &cpu_energy_2, elapsed_secs, cpu_usage as f64);
+        let delta_cpu_energy_w = delta_cpu_energy_per_pid_w(
+            &cpu_energy_1,
+            &cpu_energy_2,
+            elapsed_secs, // can pass the interval duration instead of elapsed_secs if we assume the loop runs perfectly on time, but using elapsed_secs is more accurate in case of any delays
+            cpu_usage as f64,
+        );
         // dbg!(delta_cpu_energy_w);
 
-        let (cpu_w, mem_w, igpu_w) = delta_cpu_energy_w.iter().fold(
-        (0.0_f64, 0.0_f64, 0.0_f64),
-        |mut acc, d| {
-            match d.Domaine.as_str() {
-                "cpu" => acc.0 = d.DeltaEnergy,
-                "dram" => acc.1 = d.DeltaEnergy,
-                "igpu" => acc.2 = d.DeltaEnergy,
-                _ => {}
-            }
-            acc
-        },
-    );
-
-
+        let (cpu_w, mem_w, igpu_w) =
+            delta_cpu_energy_w
+                .iter()
+                .fold((0.0_f64, 0.0_f64, 0.0_f64), |mut acc, d| {
+                    match d.domain.as_str() {
+                        "cpu" => acc.0 = d.delta_energy,
+                        "dram" => acc.1 = d.delta_energy,
+                        "igpu" => acc.2 = d.delta_energy,
+                        _ => {}
+                    }
+                    acc
+                }); // Map the delta energies to their respective domains (cpu, dram, igpu)
 
         // --- GPU energy calculation ---
         let gpu_energy_2 = get_gpu_energy(&device)?;
@@ -205,14 +193,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pid.as_u32(),
             Utc::now().to_rfc3339(),
             cpu_usage as f64,
-            cpu_w,          // replaces cpu_energy_per_pid
+            cpu_w, // replaces cpu_energy_per_pid
             gpu_util_pid,
-            gpu_power_pid, 
-            Some((mem_usage*100.0).round()/100.0), //temporary fix until i test on a another system with memory domaine in rapl
+            gpu_power_pid,
+            Some((mem_usage * 100.0).round() / 100.0), //temporary fix until i test on a another system with memory domaine in rapl
             Some(mem_w),
             None,
-            Some(igpu_w)
-            //fix mem usage and igpu usage ????
+            Some(igpu_w), // FIXME:  mem usage and igpu usage null values if not available, dead 0
         );
         // record.mem_energy = mem_w;
         // record.igpu_energy = igpu_w;

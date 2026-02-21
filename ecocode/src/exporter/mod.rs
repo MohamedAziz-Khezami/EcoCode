@@ -9,8 +9,8 @@
 
 pub mod csv;
 pub mod json;
-pub mod online;
 pub mod local;
+pub mod online;
 pub mod terminal;
 
 use async_trait::async_trait;
@@ -26,11 +26,10 @@ pub struct Record {
     pub cpu_energy: f64,   // watts
     pub gpu_usage: f64,    // percentage (0-100)
     pub gpu_energy: f64,   // watts
-    pub mem_usage: f64,  // percentage (0-100) Dram
-    pub mem_energy: f64, // watts
-    pub igpu_usage: f64, //igpu
+    pub mem_usage: f64,    // percentage (0-100) Dram
+    pub mem_energy: f64,   // watts
+    pub igpu_usage: f64,   //igpu
     pub igpu_energy: f64,
-
 }
 
 impl Record {
