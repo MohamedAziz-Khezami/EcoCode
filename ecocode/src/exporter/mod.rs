@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Record {
     pub id: u32,
+    pub run_id: i64,
     pub pid: u32,
     pub timestamp: String, // RFC3339 UTC timestamp
     pub cpu_usage: f64,    // percentage (0-100)
@@ -35,6 +36,7 @@ pub struct Record {
 impl Record {
     pub fn new(
         id: u32,
+        run_id: i64,
         pid: u32,
         timestamp: String,
         cpu_usage: f64,
@@ -48,6 +50,7 @@ impl Record {
     ) -> Record {
         Record {
             id,
+            run_id,
             pid,
             timestamp,
             cpu_usage,
@@ -63,6 +66,7 @@ impl Record {
     pub fn to_vec(&self) -> Vec<String> {
         vec![
             self.id.to_string(),
+            self.run_id.to_string(),
             self.pid.to_string(),
             self.timestamp.clone(),
             self.cpu_usage.to_string(),
@@ -92,4 +96,7 @@ pub trait Exporter {
     async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>>;
     async fn export(&mut self) -> Result<(), Box<dyn std::error::Error>>;
     async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn project_exists(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>>;
+    async fn create_project(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>>;
+    async fn create_run(&mut self, run_name: &str, project_id: i64) -> Result<i64, Box<dyn std::error::Error>>;
 }

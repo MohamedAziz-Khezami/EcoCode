@@ -54,7 +54,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output = args.output.to_lowercase();
     let project_name = args.project;
 
-    // TODO: before running the command run sudo chmod -R +r /sys/class/powercap/intel-rapl/
+
+
+
+    // Before running the command run sudo chmod -R +r /sys/class/powercap/intel-rapl/
     //promp the user for their password to access
     let _access = Command::new("sudo")
         .arg("chmod")
@@ -68,14 +71,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "terminal" => Box::new(TerminalExporter::new()),
         "csv" => Box::new(CsvExporter::new(args.file.unwrap())?),
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
-        "local" => Box::new(SqliteExporter::new(&project_name).await?),
+        "local" => Box::new(SqliteExporter::new().await?),
         "online" => Box::new(OnlineExporter::new().await?), // Does't need an input, it will read the .env
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());
 
-    // TODO: open sys/class/powercap dir and look for intel-rapl files and make a buffer for them
-    // let rapl_files = scan_rapl_files();
+    // Check if the project exists, if not it will create it and return the id
+    let project_id = exporter.project_exists(&project_name).await?;
+
+    // Create a new run for this execution and get the run_id
+    let run_id = exporter.create_run(&format!("run_{}", Utc::now().timestamp()), project_id).await?;
+
+
+    
+
+    // Open sys/class/powercap dir and look for intel-rapl files and make a buffer for them
     let mut rapl_readers = scan_rapl_files()?; //sorted by domain
     
 
@@ -99,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nvml = Nvml::init()?;
     // Get the GPU device (default index 0)
     let device = nvml.device_by_index(DEFAULT_GPU_DEVICE_INDEX)?;
+
 
     // --- Measurement state ---
     let mut iteration = 0;
@@ -124,10 +136,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         iteration += 1;
 
+        // Wait for the next sample interval, accounting for any delays to maintain consistent timing
         ticker.tick().await;
         let now = Instant::now();
         let elapsed_secs = now.duration_since(last_sample).as_secs_f64();
-        dbg!(&elapsed_secs);
+        // dbg!(&elapsed_secs);
         last_sample = now;
 
         // Refresh process data
@@ -142,33 +155,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // to get a normalized 0–100% value for the whole system
             sys.process(pid).unwrap().cpu_usage() / num_cores as f32
         };
+        // TODO: Add memory and Igpu handeling
         mem_usage = (sys.process(pid).unwrap().memory() as f64 / sys_memo as f64) * 100.0;
 
         // --- CPU energy calculation ---
         let cpu_energy_2 = get_all_energies(&mut rapl_readers)?;
 
-        // dbg!(elapsed_secs);
-
+        
+        // Calculate delta energy per domain (cpu, dram, igpu) and convert to watts using the elapsed time and CPU usage
         let delta_cpu_energy_w = delta_cpu_energy_per_pid_w(
             &cpu_energy_1,
             &cpu_energy_2,
             elapsed_secs, // can pass the interval duration instead of elapsed_secs if we assume the loop runs perfectly on time, but using elapsed_secs is more accurate in case of any delays
             cpu_usage as f64,
+        
         );
-        // dbg!(delta_cpu_energy_w);
-
+       
+        // Map the delta energies to their respective domains (cpu, dram, igpu)
         let (cpu_w, mem_w, igpu_w) =
             delta_cpu_energy_w
                 .iter()
                 .fold((0.0_f64, 0.0_f64, 0.0_f64), |mut acc, d| {
-                    match d.domain.as_str() {
-                        "cpu" => acc.0 = d.delta_energy,
-                        "dram" => acc.1 = d.delta_energy,
-                        "igpu" => acc.2 = d.delta_energy,
+                    match d.domain.as_str() { // FIX: This only do the last socket not accumulate all the cpu or ram from all the sockets
+                        "cpu" => acc.0 += d.delta_energy,
+                        "dram" => acc.1 += d.delta_energy,
+                        "igpu" => acc.2 += d.delta_energy,
                         _ => {}
                     }
                     acc
-                }); // Map the delta energies to their respective domains (cpu, dram, igpu)
+                }); 
+                // TODO: handle multiple sockets and show accumulated and each socket energy
+                // If you eventually want to display both per-socket and total values (useful for multi-socket server monitoring):
+
+                // Change the fold's output structure from a tuple 
+
+                // (f64, f64, f64)
+                //  to a HashMap<(i16, String), f64> keyed by 
+
+                // (socket, domain)
+                // .
+                // After the fold, you can sum across sockets for the total, or inspect individual sockets.
+                // Update the Record struct to optionally carry per-socket breakdowns.
+
 
         // --- GPU energy calculation ---
         let gpu_energy_2 = get_gpu_energy(&device)?;
@@ -190,6 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // --- Export the measurement record ---
         let record = Record::new(
             iteration,
+            run_id, // run_id will be set by the exporter if needed
             pid.as_u32(),
             Utc::now().to_rfc3339(),
             cpu_usage as f64,
@@ -218,3 +247,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+

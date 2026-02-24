@@ -13,6 +13,7 @@ impl TerminalExporter {
             first_record: true,
         }
     }
+
 }
 
 #[async_trait(?Send)]
@@ -93,5 +94,15 @@ impl Exporter for TerminalExporter {
         );
 
         Ok(())
+    }
+
+    async fn project_exists(&mut self, _project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_project(&mut self, _project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_run(&mut self, _run_name: &str, _project_id: i64) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
     }
 }

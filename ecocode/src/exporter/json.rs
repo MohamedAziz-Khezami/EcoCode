@@ -22,6 +22,8 @@ impl JsonExporter {
             first_record: true,
         })
     }
+
+
 }
 
 #[async_trait(?Send)]
@@ -29,8 +31,7 @@ impl Exporter for JsonExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Json
     }
-
-    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn Error>> {
+        async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn Error>> {
         // Write a comma if it's not the first record
         if !self.first_record {
             self.writer.write_all(b",")?; // Add a comma between records
@@ -46,6 +47,7 @@ impl Exporter for JsonExporter {
 
         Ok(())
     }
+
     async fn export(&mut self) -> Result<(), Box<dyn Error>> {
         // Write the closing bracket for the JSON array
         self.writer.write_all(b"]")?;
@@ -57,5 +59,15 @@ impl Exporter for JsonExporter {
     }
     async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
+    }
+
+     async fn project_exists(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_project(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_run(&mut self, run_name: &str, project_id: i64) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
     }
 }

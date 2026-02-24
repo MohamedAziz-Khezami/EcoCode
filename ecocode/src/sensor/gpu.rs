@@ -34,19 +34,20 @@ pub fn get_gpu_energy(device: &Device) -> Result<f64, Box<dyn std::error::Error>
     Ok(energy_milij as f64)
 }
 
-// 1. What are these samples?
-// The NVIDIA driver doesn't just keep a single "current utilization" number for each process.
-// Instead, it has an internal circular buffer where it records "snapshots" of activity at high frequency (usually every few milliseconds).
-// When you call device.process_utilization_stats(timestamp), you are asking the driver: "Give me every snapshot you've recorded since this specific point in time."
-// 2. What does the function actually return?
-// It returns a Vec<ProcessUtilizationSample>. If your code sleeps for 1 second and the driver takes a snapshot every 100ms, that vector will contain about 10 samples for your process.
-// Each ProcessUtilizationSample looks like this:
-// pid
-// : The process ID.
-// timestamp: The exact microsecond this specific snapshot was taken.
-// sm_util: The GPU utilization (%) during that tiny slice of time.
-// mem_util: Video memory utilization during that slice.
-// enc_util / dec_util: Video encoder/decoder activity.
+// 1. What are these samples? The NVIDIA driver doesn't just keep a single
+// "current utilization" number for each process. Instead, it has an internal
+// circular buffer where it records "snapshots" of activity at high frequency
+// (usually every few milliseconds). When you call
+// device.process_utilization_stats(timestamp), you are asking the driver: "Give
+// me every snapshot you've recorded since this specific point in time." 2. What
+// does the function actually return? It returns a
+// Vec<ProcessUtilizationSample>. If your code sleeps for 1 second and the
+// driver takes a snapshot every 100ms, that vector will contain about 10
+// samples for your process. Each ProcessUtilizationSample looks like this: pid
+// : The process ID. timestamp: The exact microsecond this specific snapshot was
+// taken. sm_util: The GPU utilization (%) during that tiny slice of time.
+// mem_util: Video memory utilization during that slice. enc_util / dec_util:
+// Video encoder/decoder activity.
 
 pub fn get_gpu_energy_by_pid(
     device: &Device,
@@ -67,21 +68,23 @@ pub fn get_gpu_energy_by_pid(
         }
     };
 
-    //If the function fails once and we return the same timestamp, the next successful call will return samples for a 2-second window (the failed 1s + the current 1s).
-
-    // However, in
-    // main.rs
-    // we are still calculating total_gpu_power_w using only the 1-second delta of the physical hardware energy counters (energy_2 - energy_1).
-
-    // The result: You are applying the average utilization of the last 2 seconds to the total power consumed in the last 1 second. It's an approximation that says: "I don't know exactly what happened in the last second, so I'll use the average of everything I've seen since my last successful check."
-
-    // Is there a better way?
-
-    // If you want to perfectly "give up" on the failed period and stay strictly within the current 1-second window, you could return the current system timestamp instead.
-
-    // But there's a risk: If you do that, the activity that happened during that 1-second failure is permanently lost. By retrying with the old timestamp, we at least allow the driver to give us those samples later, ensuring our average utilization is informed by the "missing" time.
-
-    // Get the latest timestamp from samples or keep the current one
+    // If the function fails once and we return the same timestamp, the next
+    // successful call will return samples for a 2-second window (the failed 1s
+    // + the current 1s). However, in main.rs we are still calculating
+    // total_gpu_power_w using only the 1-second delta of the physical hardware
+    // energy counters (energy_2 - energy_1). The result: You are applying the
+    // average utilization of the last 2 seconds to the total power consumed in
+    // the last 1 second. It's an approximation that says: "I don't know exactly
+    // what happened in the last second, so I'll use the average of everything
+    // I've seen since my last successful check." Is there a better way? If you
+    // want to perfectly "give up" on the failed period and stay strictly within
+    // the current 1-second window, you could return the current system
+    // timestamp instead. But there's a risk: If you do that, the activity that
+    // happened during that 1-second failure is permanently lost. By retrying
+    // with the old timestamp, we at least allow the driver to give us those
+    // samples later, ensuring our average utilization is informed by the
+    // "missing" time. Get the latest timestamp from samples or keep the current
+    // one
     let next_timestamp = stats.iter().map(|s| s.timestamp).max().unwrap_or(timestamp);
 
     // println!("{:?}", stats);
@@ -97,6 +100,7 @@ pub fn get_gpu_energy_by_pid(
         (sum as f64 / pid_samples.len() as f64) / 100.0
     };
 
+    // FIX: Find a way to know the max gpu energy counter.
     let delta_energy_mj = if energy_2 >= energy_1 {
         energy_2 - energy_1
     } else {

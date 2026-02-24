@@ -20,6 +20,7 @@ impl CsvExporter {
             first_record: true,
         })
     }
+
 }
 
 #[async_trait(?Send)]
@@ -27,11 +28,12 @@ impl Exporter for CsvExporter {
     fn exporter_type(&self) -> ExporterType {
         ExporterType::Csv
     }
-    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
+        async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         if self.first_record {
             self.writer
                 .write_record(vec![
                     "ID",
+                    "Run ID",
                     "PID",
                     "Timestamp",
                     "CPU%",
@@ -58,5 +60,14 @@ impl Exporter for CsvExporter {
     }
     async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
+    }
+    async fn project_exists(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_project(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_run(&mut self, run_name: &str, project_id: i64) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
     }
 }

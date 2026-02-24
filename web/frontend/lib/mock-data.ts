@@ -7,6 +7,10 @@ export interface Record {
   cpu_energy: number // watts
   gpu_usage: number // percentage 0-100
   gpu_energy: number // watts
+  mem_usage: number // percentage 0-100
+  mem_energy: number // watts
+  igpu_usage: number // percentage 0-100
+  igpu_energy: number // watts
 }
 
 export interface Run {
@@ -18,6 +22,7 @@ export interface Run {
   totalCoreHours: number
   avgCpuUsage: number // percentage
   avgGpuUsage: number // percentage
+  avgMemUsage: number // percentage
   carbonFootprint: number // gCO2
   waterConsumption: number // mL
   duration: number // seconds
@@ -42,6 +47,10 @@ function generateRunRecords(count: number, startTime: number): Record[] {
       cpu_energy: 50 + Math.random() * 150,
       gpu_usage: Math.random() > 0.3 ? 10 + Math.random() * 80 : 0,
       gpu_energy: Math.random() > 0.3 ? 30 + Math.random() * 200 : 0,
+      mem_usage: 10 + Math.random() * 40,
+      mem_energy: 5 + Math.random() * 15,
+      igpu_usage: Math.random() > 0.8 ? 5 + Math.random() * 20 : 0,
+      igpu_energy: Math.random() > 0.8 ? 2 + Math.random() * 10 : 0,
     })
   }
 
@@ -52,12 +61,16 @@ function generateRunRecords(count: number, startTime: number): Record[] {
 function calculateRunMetrics(records: Record[]) {
   const totalCpuEnergy = records.reduce((sum, r) => sum + r.cpu_energy, 0)
   const totalGpuEnergy = records.reduce((sum, r) => sum + r.gpu_energy, 0)
-  const totalEnergy = totalCpuEnergy + totalGpuEnergy
+  const totalMemEnergy = records.reduce((sum, r) => sum + r.mem_energy, 0)
+  const totalIgpuEnergy = records.reduce((sum, r) => sum + r.igpu_energy, 0)
+  const totalEnergy = totalCpuEnergy + totalGpuEnergy + totalMemEnergy + totalIgpuEnergy
 
   const avgCpuUsage =
     records.reduce((sum, r) => sum + r.cpu_usage, 0) / records.length
   const avgGpuUsage =
     records.reduce((sum, r) => sum + r.gpu_usage, 0) / records.length
+  const avgMemUsage =
+    records.reduce((sum, r) => sum + r.mem_usage, 0) / records.length
 
   // Convert Wh to kWh then apply factors
   const energyKwh = totalEnergy / 1000
@@ -68,6 +81,7 @@ function calculateRunMetrics(records: Record[]) {
     totalEnergy,
     avgCpuUsage,
     avgGpuUsage,
+    avgMemUsage,
     carbonFootprint,
     waterConsumption,
   }
@@ -93,6 +107,7 @@ export function generateMockRuns(): Run[] {
       totalCoreHours: (metrics.totalEnergy / 1000) * 24, // Rough estimate
       avgCpuUsage: metrics.avgCpuUsage,
       avgGpuUsage: metrics.avgGpuUsage,
+      avgMemUsage: metrics.avgMemUsage,
       carbonFootprint: metrics.carbonFootprint,
       waterConsumption: metrics.waterConsumption,
       duration: recordCount * 60, // 1 minute per record
@@ -137,6 +152,10 @@ export function getImprovements(): Record[] {
         ((prev.carbonFootprint - curr.carbonFootprint) /
           prev.carbonFootprint) *
         100,
+      mem_usage: ((prev.avgMemUsage - curr.avgMemUsage) / prev.avgMemUsage) * 100,
+      mem_energy: ((prev.totalEnergy - curr.totalEnergy) / prev.totalEnergy) * 100,
+      igpu_usage: 0,
+      igpu_energy: 0,
     })
   }
 

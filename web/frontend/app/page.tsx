@@ -15,11 +15,58 @@ import { UtilizationChart } from '@/components/UtilizationChart'
 import { RecentRunsTable } from '@/components/RecentRunsTable'
 import { Run } from '@/lib/mock-data'
 import { fetchAllRuns, fetchRunDetail } from '@/lib/api-client'
+import { useSSE } from '@/hooks/use-sse'
 
 export default function Dashboard() {
   const [runs, setRuns] = useState<Omit<Run, 'records'>[]>([])
   const [currentRun, setCurrentRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
+  const { latestRecord } = useSSE()
+
+  // Update current run with real-time SSE data
+  useEffect(() => {
+    if (!latestRecord) return
+
+    setCurrentRun((prevRun) => {
+      if (!prevRun) return null
+
+      // Check if the record already exists to avoid duplicates
+      if (prevRun.records.some((r) => r.id === latestRecord.id)) return prevRun
+
+      const updatedRecords = [...prevRun.records, latestRecord]
+      const count = updatedRecords.length
+
+      // Calculate total values incrementally if possible, but for simplicity here we re-sum lightly
+      // Total energy across all components
+      const totalCpuEnergy = updatedRecords.reduce((sum, r) => sum + r.cpu_energy, 0)
+      const totalGpuEnergy = updatedRecords.reduce((sum, r) => sum + r.gpu_energy, 0)
+      const totalMemEnergy = updatedRecords.reduce((sum, r) => sum + r.mem_energy, 0)
+      const totalIgpuEnergy = updatedRecords.reduce((sum, r) => sum + r.igpu_energy, 0)
+      const totalEnergy =
+        totalCpuEnergy + totalGpuEnergy + totalMemEnergy + totalIgpuEnergy
+      const energyKwh = totalEnergy / 1000
+
+      // Calculate averages incrementally would be better, but let's at least avoid multiple maps
+      let sumCpu = 0,
+        sumGpu = 0,
+        sumMem = 0
+      for (const r of updatedRecords) {
+        sumCpu += r.cpu_usage
+        sumGpu += r.gpu_usage
+        sumMem += r.mem_usage
+      }
+
+      return {
+        ...prevRun,
+        records: updatedRecords,
+        totalEnergy,
+        carbonFootprint: energyKwh * 0.475 * 1000,
+        avgCpuUsage: sumCpu / count,
+        avgGpuUsage: sumGpu / count,
+        avgMemUsage: sumMem / count,
+      }
+    })
+  }, [latestRecord])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -52,22 +99,26 @@ export default function Dashboard() {
       ? runs.reduce((sum, r) => sum + r.avgCpuUsage, 0) / runs.length
       : 0
   const totalCarbonFootprint = runs.reduce((sum, r) => sum + r.carbonFootprint, 0)
+  const avgMemUsage =
+    runs.length > 0
+      ? runs.reduce((sum, r) => sum + r.avgMemUsage || 0, 0) / runs.length
+      : 0
 
   // Calculate trends (comparing last two runs)
   const trend =
     runs.length >= 2
       ? {
-          energyTrend:
-            ((runs[runs.length - 2].totalEnergy -
-              runs[runs.length - 1].totalEnergy) /
-              runs[runs.length - 2].totalEnergy) *
-            100,
-          carbonTrend:
-            ((runs[runs.length - 2].carbonFootprint -
-              runs[runs.length - 1].carbonFootprint) /
-              runs[runs.length - 2].carbonFootprint) *
-            100,
-        }
+        energyTrend:
+          ((runs[runs.length - 2].totalEnergy -
+            runs[runs.length - 1].totalEnergy) /
+            runs[runs.length - 2].totalEnergy) *
+          100,
+        carbonTrend:
+          ((runs[runs.length - 2].carbonFootprint -
+            runs[runs.length - 1].carbonFootprint) /
+            runs[runs.length - 2].carbonFootprint) *
+          100,
+      }
       : null
 
   return (
@@ -97,9 +148,9 @@ export default function Dashboard() {
               trend={
                 trend
                   ? {
-                      value: trend.energyTrend,
-                      direction: trend.energyTrend > 0 ? 'up' : 'down',
-                    }
+                    value: trend.energyTrend,
+                    direction: trend.energyTrend > 0 ? 'up' : 'down',
+                  }
                   : undefined
               }
               loading={loading}
@@ -119,9 +170,9 @@ export default function Dashboard() {
               trend={
                 trend
                   ? {
-                      value: trend.carbonTrend,
-                      direction: trend.carbonTrend > 0 ? 'up' : 'down',
-                    }
+                    value: trend.carbonTrend,
+                    direction: trend.carbonTrend > 0 ? 'up' : 'down',
+                  }
                   : undefined
               }
               loading={loading}
@@ -130,6 +181,20 @@ export default function Dashboard() {
               icon={Activity}
               label="Avg CPU Usage"
               value={avgCpuUsage.toFixed(1)}
+              unit="%"
+              loading={loading}
+            />
+            <MetricCard
+              icon={Activity}
+              label="Avg GPU Usage"
+              value={(runs.reduce((sum, r) => sum + r.avgGpuUsage, 0) / (runs.length || 1)).toFixed(1)}
+              unit="%"
+              loading={loading}
+            />
+            <MetricCard
+              icon={Activity}
+              label="Avg Memory Usage"
+              value={avgMemUsage.toFixed(1)}
               unit="%"
               loading={loading}
             />

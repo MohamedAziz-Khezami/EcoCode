@@ -18,7 +18,7 @@ interface EnergyBreakdownChartProps {
 
 export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
   // Create time buckets for better visualization
-  const buckets: Record<string, { cpu: number; gpu: number; count: number }> = {}
+  const buckets: Record<string, { cpu: number; gpu: number; mem: number; igpu: number; count: number }> = {}
 
   run.records.forEach((record) => {
     const time = new Date(record.timestamp)
@@ -29,11 +29,13 @@ export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
     })
 
     if (!buckets[key]) {
-      buckets[key] = { cpu: 0, gpu: 0, count: 0 }
+      buckets[key] = { cpu: 0, gpu: 0, mem: 0, igpu: 0, count: 0 }
     }
 
     buckets[key].cpu += record.cpu_energy
     buckets[key].gpu += record.gpu_energy
+    buckets[key].mem += record.mem_energy
+    buckets[key].igpu += record.igpu_energy
     buckets[key].count += 1
   })
 
@@ -43,6 +45,8 @@ export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
       time,
       cpu: Math.round(data.cpu / data.count),
       gpu: Math.round(data.gpu / data.count),
+      mem: Math.round(data.mem / data.count),
+      igpu: Math.round(data.igpu / data.count),
     }))
 
   return (
@@ -83,6 +87,20 @@ export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
             fill="hsl(49 89% 52%)"
             radius={[4, 4, 0, 0]}
             name="GPU Energy (W)"
+            isAnimationActive={true}
+          />
+          <Bar
+            dataKey="mem"
+            fill="hsl(210 100% 50%)"
+            radius={[4, 4, 0, 0]}
+            name="Memory Energy (W)"
+            isAnimationActive={true}
+          />
+          <Bar
+            dataKey="igpu"
+            fill="hsl(280 100% 50%)"
+            radius={[4, 4, 0, 0]}
+            name="iGPU Energy (W)"
             isAnimationActive={true}
           />
         </BarChart>

@@ -18,10 +18,12 @@ interface EnergyChartProps {
 
 export function EnergyChart({ data }: EnergyChartProps) {
   const chartData = data.map((record) => ({
-    time: format(new Date(record.timestamp), 'HH:mm'),
-    cpu: Math.round(record.cpu_energy),
-    gpu: Math.round(record.gpu_energy),
-    total: Math.round(record.cpu_energy + record.gpu_energy),
+    time: format(new Date(record.timestamp), 'HH:mm:ss'),
+    cpu: Number(record.cpu_energy.toFixed(2)),
+    gpu: Number(record.gpu_energy.toFixed(2)),
+    mem: Number(record.mem_energy.toFixed(2)),
+    igpu: Number(record.igpu_energy.toFixed(2)),
+    total: Number((record.cpu_energy + record.gpu_energy + record.mem_energy + record.igpu_energy).toFixed(2)),
   }))
 
   return (
@@ -66,6 +68,24 @@ export function EnergyChart({ data }: EnergyChartProps) {
             strokeWidth={2}
             dot={false}
             name="GPU Energy"
+            isAnimationActive={true}
+          />
+          <Line
+            type="monotone"
+            dataKey="mem"
+            stroke="hsl(210 100% 50%)"
+            strokeWidth={2}
+            dot={false}
+            name="Memory Energy"
+            isAnimationActive={true}
+          />
+          <Line
+            type="monotone"
+            dataKey="igpu"
+            stroke="hsl(280 100% 50%)"
+            strokeWidth={2}
+            dot={false}
+            name="iGPU Energy"
             isAnimationActive={true}
           />
         </LineChart>

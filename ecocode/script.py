@@ -72,8 +72,8 @@ def test(model, device, test_loader):
 def main():
     # Training settings
     batch_size = 64
-    test_batch_size = 1000
-    epochs = 2
+    test_batch_size = 10
+    epochs = 5
     lr = 1.0
     gamma = 0.7
     use_cuda = torch.cuda.is_available()

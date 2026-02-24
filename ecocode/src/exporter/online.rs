@@ -38,6 +38,9 @@ impl OnlineExporter {
 
         Ok(OnlineExporter { db })
     }
+
+
+
 }
 
 #[async_trait(?Send)]
@@ -46,11 +49,12 @@ impl Exporter for OnlineExporter {
         ExporterType::Online
     }
 
-    async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
+        async fn add_record(&mut self, record: Record) -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query(
-            "INSERT INTO records (pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy, mem_usage, mem_energy, igpu_usage, igpu_energy)
-            VALUES ($1, $2::timestamptz, $3, $4, $5, $6 , $7, $8, $9, $10)",
+            "INSERT INTO records (run_id, pid, timestamp, cpu_usage, cpu_energy, gpu_usage, gpu_energy, mem_usage, mem_energy, igpu_usage, igpu_energy)
+            VALUES ($1, $2, $3::timestamptz, $4, $5, $6 , $7, $8, $9, $10)",
         )
+        .bind(record.run_id)
         .bind(record.pid as i64)
         .bind(record.timestamp)
         .bind(record.cpu_usage)
@@ -73,5 +77,14 @@ impl Exporter for OnlineExporter {
 
     async fn export_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
+    }
+    async fn project_exists(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_project(&mut self, project_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
+    }
+    async fn create_run(&mut self, run_name: &str, project_id: i64) -> Result<i64, Box<dyn std::error::Error>> {
+        Ok(0)
     }
 }
