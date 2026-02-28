@@ -20,6 +20,7 @@ use exporter::online::OnlineExporter;
 use exporter::terminal::TerminalExporter;
 use exporter::{Exporter, Record};
 
+use crate::exporter::prometheus::PrometheusExporter;
 use crate::sensor::rapl::{delta_cpu_energy_per_pid_w, get_all_energies};
 
 // --- Command-line argument parsing ---
@@ -73,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "json" => Box::new(JsonExporter::new(args.file.unwrap())?),
         "local" => Box::new(SqliteExporter::new().await?),
         "online" => Box::new(OnlineExporter::new().await?), // Does't need an input, it will read the .env
+        "prometheus" => Box::new(PrometheusExporter::new()),
         _ => Box::new(TerminalExporter::new()),
     };
     println!("Exporter type: {:?}", exporter.exporter_type());

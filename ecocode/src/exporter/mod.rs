@@ -12,6 +12,8 @@ pub mod json;
 pub mod local;
 pub mod online;
 pub mod terminal;
+pub mod prometheus;
+
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
