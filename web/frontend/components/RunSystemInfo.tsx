@@ -24,14 +24,14 @@ export function RunSystemInfo({ run }: RunSystemInfoProps) {
       label: 'Total Energy',
       value: `${Math.round(run.totalEnergy)} Wh`,
     },
-    {
-      label: 'Carbon Footprint',
-      value: `${Math.round(run.carbonFootprint)} g CO₂`,
-    },
-    {
-      label: 'Water Consumption',
-      value: `${Math.round(run.waterConsumption)} mL`,
-    },
+    // {
+    //   label: 'Carbon Footprint',
+    //   value: `${Math.round(run.carbonFootprint)} g CO₂`,
+    // },
+    // {
+    //   label: 'Water Consumption',
+    //   value: `${Math.round(run.waterConsumption)} mL`,
+    // },
   ]
 
   return (

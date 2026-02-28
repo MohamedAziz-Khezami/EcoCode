@@ -1,6 +1,7 @@
-// EcoCode Record types
-export interface Record {
+// EcoCode MetricRecord types
+export interface MetricRecord {
   id: string
+  run_id: string
   pid: number
   timestamp: number
   cpu_usage: number // percentage 0-100
@@ -26,7 +27,7 @@ export interface Run {
   carbonFootprint: number // gCO2
   waterConsumption: number // mL
   duration: number // seconds
-  records: Record[]
+  records: MetricRecord[]
 }
 
 // Constants for calculations
@@ -34,13 +35,14 @@ const CARBON_FACTOR = 0.475 // kgCO2/kWh (world average)
 const WATER_FACTOR = 1.8 // L/kWh
 
 // Helper to generate mock records for a run
-function generateRunRecords(count: number, startTime: number): Record[] {
-  const records: Record[] = []
+function generateRunRecords(count: number, startTime: number): MetricRecord[] {
+  const records: MetricRecord[] = []
   const timeStep = 60000 // 1 minute intervals in ms
 
   for (let i = 0; i < count; i++) {
     records.push({
       id: `record-${i}`,
+      run_id: 'mock-run',
       pid: Math.floor(Math.random() * 65535),
       timestamp: startTime + i * timeStep,
       cpu_usage: 20 + Math.random() * 70,
@@ -58,7 +60,7 @@ function generateRunRecords(count: number, startTime: number): Record[] {
 }
 
 // Helper to calculate run metrics from records
-function calculateRunMetrics(records: Record[]) {
+function calculateRunMetrics(records: MetricRecord[]) {
   const totalCpuEnergy = records.reduce((sum, r) => sum + r.cpu_energy, 0)
   const totalGpuEnergy = records.reduce((sum, r) => sum + r.gpu_energy, 0)
   const totalMemEnergy = records.reduce((sum, r) => sum + r.mem_energy, 0)
@@ -131,9 +133,9 @@ export function getRunById(id: string): Run | null {
 }
 
 // Get comparison data between consecutive runs
-export function getImprovements(): Record[] {
+export function getImprovements(): MetricRecord[] {
   const runs = getRuns()
-  const improvements: Record[] = []
+  const improvements: MetricRecord[] = []
 
   for (let i = 1; i < runs.length; i++) {
     const prev = runs[i - 1]
@@ -141,6 +143,7 @@ export function getImprovements(): Record[] {
 
     improvements.push({
       id: `improvement-${i}`,
+      run_id: curr.id,
       pid: 0,
       timestamp: curr.timestamp,
       cpu_usage:

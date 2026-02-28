@@ -10,7 +10,7 @@
  * 3. Add error handling and retry logic as needed
  */
 
-import { Run, Record } from './mock-data'
+import { Run, MetricRecord } from './mock-data'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -53,9 +53,10 @@ interface BackendRunSummary {
   total_igpu_energy: number
 }
 
-function mapRecord(r: BackendRecordPoint): Record {
+function mapRecord(r: BackendRecordPoint): MetricRecord {
   return {
     id: r.id.toString(),
+    run_id: r.run_id.toString(),
     pid: r.pid,
     timestamp: new Date(r.timestamp).getTime(),
     cpu_usage: r.cpu_usage,
@@ -69,13 +70,35 @@ function mapRecord(r: BackendRecordPoint): Record {
   }
 }
 
+async function mapRunSummary(backendRun: BackendRun): Promise<RunSummary> {
+  const summaryRes = await fetch(`${API_BASE_URL}/api/run/${backendRun.id}/summary`)
+  const summary: BackendRunSummary | null = summaryRes.ok ? await summaryRes.json() : null
+
+  const totalEnergy = summary ? (summary.total_cpu_energy + summary.total_gpu_energy + summary.total_mem_energy + summary.total_igpu_energy) : 0
+  const energyKwh = totalEnergy / 1000
+
+  return {
+    id: backendRun.id.toString(),
+    name: backendRun.name,
+    timestamp: Date.now(), // Fallback since we don't fetch records
+    status: 'finished',
+    totalEnergy,
+    totalCoreHours: energyKwh * 24,
+    avgCpuUsage: 0, // Mocked to avoid heavy fetch
+    avgGpuUsage: 0, // Mocked to avoid heavy fetch
+    avgMemUsage: 0, // Mocked to avoid heavy fetch
+    carbonFootprint: energyKwh * CARBON_FACTOR * 1000,
+    waterConsumption: energyKwh * WATER_FACTOR * 1000,
+    duration: 0, // Mocked to avoid heavy fetch
+  }
+}
+
 async function mapRun(backendRun: BackendRun): Promise<Run> {
   // Fetch summary for metrics
   const summaryRes = await fetch(`${API_BASE_URL}/api/run/${backendRun.id}/summary`)
   const summary: BackendRunSummary | null = summaryRes.ok ? await summaryRes.json() : null
 
-  // Fetch record points for charts (optional depending on if we need them all upfront)
-  // For now, let's just fetch them to match the expected interface of fetchRunDetail
+  // Fetch record points for charts
   const recordsRes = await fetch(`${API_BASE_URL}/api/run/${backendRun.id}/record_points`)
   const backendRecords: BackendRecordPoint[] = recordsRes.ok ? await recordsRes.json() : []
   const records = backendRecords.map(mapRecord)
@@ -109,6 +132,16 @@ async function mapRun(backendRun: BackendRun): Promise<Run> {
 
 export interface RunSummary extends Omit<Run, 'records'> { }
 export interface RunDetail extends Run { }
+export interface ProjectSummary {
+  id: string
+  name: string
+  totalRuns: number
+  totalEnergy: number // Wh
+  lastRunTimestamp: number
+}
+export interface ProjectDetail extends ProjectSummary {
+  runs: RunSummary[]
+}
 export interface Improvement {
   id: string
   pid: number
@@ -124,6 +157,93 @@ export interface Improvement {
 }
 
 /**
+ * Fetch all projects and aggregate their metrics
+ */
+export async function fetchAllProjects(): Promise<ProjectSummary[]> {
+  try {
+    const projectsRes = await fetch(`${API_BASE_URL}/api/projects`)
+    if (!projectsRes.ok) throw new Error('Failed to fetch projects')
+    const projects: BackendProject[] = await projectsRes.json()
+
+    // Process projects concurrently
+    const projectSummaries = await Promise.all(
+      projects.map(async (project) => {
+        const runsRes = await fetch(`${API_BASE_URL}/api/project/${project.id}/runs`)
+
+        if (!runsRes.ok) {
+          return {
+            id: project.id.toString(),
+            name: project.name,
+            totalRuns: 0,
+            totalEnergy: 0,
+            lastRunTimestamp: 0,
+          }
+        }
+
+        const backendRuns: BackendRun[] = await runsRes.json()
+
+        // Fetch ALL summaries for this project concurrently
+        const runSummaries = await Promise.all(backendRuns.map(mapRunSummary))
+
+        const totalEnergy = runSummaries.reduce((sum, r) => sum + r.totalEnergy, 0)
+        const lastRunTimestamp = runSummaries.reduce((max, r) => Math.max(max, r.timestamp), 0)
+
+        return {
+          id: project.id.toString(),
+          name: project.name,
+          totalRuns: backendRuns.length,
+          totalEnergy,
+          lastRunTimestamp: lastRunTimestamp || Date.now(),
+        }
+      })
+    )
+
+    return projectSummaries
+  } catch (error) {
+    console.error('Error fetching projects:', error)
+    throw error
+  }
+}
+
+/**
+ * Fetch a specific project and its runs
+ */
+export async function fetchProjectRuns(projectId: string): Promise<ProjectDetail> {
+  try {
+    const projectsRes = await fetch(`${API_BASE_URL}/api/projects`)
+    if (!projectsRes.ok) throw new Error('Failed to fetch projects')
+    const projects: BackendProject[] = await projectsRes.json()
+
+    const project = projects.find(p => p.id.toString() === projectId)
+    if (!project) throw new Error(`Project ${projectId} not found`)
+
+    const runsRes = await fetch(`${API_BASE_URL}/api/project/${project.id}/runs`)
+    let runSummaries: RunSummary[] = []
+
+    if (runsRes.ok) {
+      const backendRuns: BackendRun[] = await runsRes.json()
+      // Map properties currently in parallel
+      runSummaries = await Promise.all(backendRuns.map(mapRunSummary))
+    }
+
+    const totalEnergy = runSummaries.reduce((sum, r) => sum + r.totalEnergy, 0)
+    const lastRunTimestamp = runSummaries.reduce((max, r) => Math.max(max, r.timestamp), 0)
+
+    return {
+      id: project.id.toString(),
+      name: project.name,
+      totalRuns: runSummaries.length,
+      totalEnergy,
+      lastRunTimestamp: lastRunTimestamp || Date.now(),
+      runs: runSummaries.sort((a, b) => b.timestamp - a.timestamp)
+    }
+  } catch (error) {
+    console.error(`Error fetching project ${projectId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Fetch all runs for all projects
  */
 export async function fetchAllRuns(): Promise<RunSummary[]> {
@@ -132,21 +252,19 @@ export async function fetchAllRuns(): Promise<RunSummary[]> {
     if (!projectsRes.ok) throw new Error('Failed to fetch projects')
     const projects: BackendProject[] = await projectsRes.json()
 
-    const allRuns: RunSummary[] = []
+    // Fetch runs for ALL projects concurrently
+    const projectRunsArrays = await Promise.all(
+      projects.map(async (project) => {
+        const runsRes = await fetch(`${API_BASE_URL}/api/project/${project.id}/runs`)
+        if (!runsRes.ok) return []
 
-    for (const project of projects) {
-      const runsRes = await fetch(`${API_BASE_URL}/api/project/${project.id}/runs`)
-      if (runsRes.ok) {
         const backendRuns: BackendRun[] = await runsRes.json()
-        for (const br of backendRuns) {
-          // In a real app we might not want to fetch full details here, 
-          // but fetchAllRuns needs the metrics for the metric cards.
-          const run = await mapRun(br)
-          const { records, ...summary } = run
-          allRuns.push(summary)
-        }
-      }
-    }
+        return Promise.all(backendRuns.map(mapRunSummary))
+      })
+    )
+
+    // Flatten array of arrays
+    const allRuns = projectRunsArrays.flat()
 
     return allRuns.sort((a, b) => b.timestamp - a.timestamp)
   } catch (error) {
@@ -231,6 +349,7 @@ export async function searchRuns(filters: Record<string, any>): Promise<RunSumma
 export async function batchDeleteRuns(ids: string[]): Promise<void> {
   await Promise.all(ids.map(id => deleteRun(id)))
 }
+
 
 export async function exportRunAsCSV(id: string): Promise<Blob> {
   const run = await fetchRunDetail(id)

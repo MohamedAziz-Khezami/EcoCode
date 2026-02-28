@@ -1,5 +1,6 @@
 'use client'
 
+import React, { useMemo } from 'react'
 import {
   BarChart,
   Bar,
@@ -17,37 +18,39 @@ interface EnergyBreakdownChartProps {
 }
 
 export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
-  // Create time buckets for better visualization
-  const buckets: Record<string, { cpu: number; gpu: number; mem: number; igpu: number; count: number }> = {}
+  const chartData = useMemo(() => {
+    // Create time buckets for better visualization
+    const buckets: Record<string, { cpu: number; gpu: number; mem: number; igpu: number; count: number }> = {}
 
-  run.records.forEach((record) => {
-    const time = new Date(record.timestamp)
-    const minute = Math.floor(time.getTime() / 60000) * 60000
-    const key = new Date(minute).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
+    run.records.forEach((record) => {
+      const time = new Date(record.timestamp)
+      const minute = Math.floor(time.getTime() / 60000) * 60000
+      const key = new Date(minute).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+
+      if (!buckets[key]) {
+        buckets[key] = { cpu: 0, gpu: 0, mem: 0, igpu: 0, count: 0 }
+      }
+
+      buckets[key].cpu += record.cpu_energy
+      buckets[key].gpu += record.gpu_energy
+      buckets[key].mem += record.mem_energy
+      buckets[key].igpu += record.igpu_energy
+      buckets[key].count += 1
     })
 
-    if (!buckets[key]) {
-      buckets[key] = { cpu: 0, gpu: 0, mem: 0, igpu: 0, count: 0 }
-    }
-
-    buckets[key].cpu += record.cpu_energy
-    buckets[key].gpu += record.gpu_energy
-    buckets[key].mem += record.mem_energy
-    buckets[key].igpu += record.igpu_energy
-    buckets[key].count += 1
-  })
-
-  const chartData = Object.entries(buckets)
-    .slice(-20) // Last 20 buckets
-    .map(([time, data]) => ({
-      time,
-      cpu: Math.round(data.cpu / data.count),
-      gpu: Math.round(data.gpu / data.count),
-      mem: Math.round(data.mem / data.count),
-      igpu: Math.round(data.igpu / data.count),
-    }))
+    return Object.entries(buckets)
+      .slice(-20) // Last 20 buckets
+      .map(([time, data]) => ({
+        time,
+        cpu: Math.round(data.cpu / data.count),
+        gpu: Math.round(data.gpu / data.count),
+        mem: Math.round(data.mem / data.count),
+        igpu: Math.round(data.igpu / data.count),
+      }))
+  }, [run.records])
 
   return (
     <div className="chart-container">
@@ -80,28 +83,28 @@ export function EnergyBreakdownChart({ run }: EnergyBreakdownChartProps) {
             fill="hsl(160 84% 39%)"
             radius={[4, 4, 0, 0]}
             name="CPU Energy (W)"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Bar
             dataKey="gpu"
             fill="hsl(49 89% 52%)"
             radius={[4, 4, 0, 0]}
             name="GPU Energy (W)"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Bar
             dataKey="mem"
             fill="hsl(210 100% 50%)"
             radius={[4, 4, 0, 0]}
             name="Memory Energy (W)"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Bar
             dataKey="igpu"
             fill="hsl(280 100% 50%)"
             radius={[4, 4, 0, 0]}
             name="iGPU Energy (W)"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
         </BarChart>
       </ResponsiveContainer>

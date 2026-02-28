@@ -14,7 +14,7 @@ use crate::exporter::{Exporter, ExporterType, Record};
 pub struct SqliteExporter {
     db: SqlitePool,
 }
-
+// TODO: Do the run calculations after the run and save them in database table
 impl SqliteExporter {
     pub async fn new() -> Result<SqliteExporter, Box<dyn std::error::Error>> {
         let db_url = "sqlite://ecocodeDB.db"; // You can change this to a custom path if needed

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import {
   Zap,
   Leaf,
@@ -13,12 +13,14 @@ import { MetricCard } from '@/components/MetricCard'
 import { EnergyChart } from '@/components/EnergyChart'
 import { UtilizationChart } from '@/components/UtilizationChart'
 import { RecentRunsTable } from '@/components/RecentRunsTable'
+import { ProjectsTable } from '@/components/ProjectsTable'
 import { Run } from '@/lib/mock-data'
-import { fetchAllRuns, fetchRunDetail } from '@/lib/api-client'
+import { fetchAllRuns, fetchRunDetail, fetchAllProjects, ProjectSummary } from '@/lib/api-client'
 import { useSSE } from '@/hooks/use-sse'
 
 export default function Dashboard() {
   const [runs, setRuns] = useState<Omit<Run, 'records'>[]>([])
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [currentRun, setCurrentRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const { latestRecord } = useSSE()
@@ -36,34 +38,29 @@ export default function Dashboard() {
       const updatedRecords = [...prevRun.records, latestRecord]
       const count = updatedRecords.length
 
-      // Calculate total values incrementally if possible, but for simplicity here we re-sum lightly
-      // Total energy across all components
-      const totalCpuEnergy = updatedRecords.reduce((sum, r) => sum + r.cpu_energy, 0)
-      const totalGpuEnergy = updatedRecords.reduce((sum, r) => sum + r.gpu_energy, 0)
-      const totalMemEnergy = updatedRecords.reduce((sum, r) => sum + r.mem_energy, 0)
-      const totalIgpuEnergy = updatedRecords.reduce((sum, r) => sum + r.igpu_energy, 0)
-      const totalEnergy =
-        totalCpuEnergy + totalGpuEnergy + totalMemEnergy + totalIgpuEnergy
-      const energyKwh = totalEnergy / 1000
+      // Calculate new total and averages incrementally (O(1) instead of O(N))
+      const newTotalEnergy =
+        prevRun.totalEnergy +
+        (latestRecord.cpu_energy +
+          latestRecord.gpu_energy +
+          latestRecord.mem_energy +
+          latestRecord.igpu_energy)
 
-      // Calculate averages incrementally would be better, but let's at least avoid multiple maps
-      let sumCpu = 0,
-        sumGpu = 0,
-        sumMem = 0
-      for (const r of updatedRecords) {
-        sumCpu += r.cpu_usage
-        sumGpu += r.gpu_usage
-        sumMem += r.mem_usage
-      }
+      const energyKwh = newTotalEnergy / 1000
+
+      // Incremental averages: (old_avg * old_count + new_val) / new_count
+      const avgCpuUsage = (prevRun.avgCpuUsage * (count - 1) + latestRecord.cpu_usage) / count
+      const avgGpuUsage = (prevRun.avgGpuUsage * (count - 1) + latestRecord.gpu_usage) / count
+      const avgMemUsage = (prevRun.avgMemUsage * (count - 1) + latestRecord.mem_usage) / count
 
       return {
         ...prevRun,
         records: updatedRecords,
-        totalEnergy,
+        totalEnergy: newTotalEnergy,
         carbonFootprint: energyKwh * 0.475 * 1000,
-        avgCpuUsage: sumCpu / count,
-        avgGpuUsage: sumGpu / count,
-        avgMemUsage: sumMem / count,
+        avgCpuUsage,
+        avgGpuUsage,
+        avgMemUsage,
       }
     })
   }, [latestRecord])
@@ -71,6 +68,9 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const projData = await fetchAllProjects()
+        setProjects(projData)
+
         // Fetch all runs using the API client
         const runsData = await fetchAllRuns()
         setRuns(runsData)
@@ -91,35 +91,52 @@ export default function Dashboard() {
     fetchData()
   }, [])
 
-  // Calculate aggregate stats
-  const totalEnergy = runs.reduce((sum, r) => sum + r.totalEnergy, 0)
-  const totalCoreHours = runs.reduce((sum, r) => sum + r.totalCoreHours, 0)
-  const avgCpuUsage =
-    runs.length > 0
-      ? runs.reduce((sum, r) => sum + r.avgCpuUsage, 0) / runs.length
-      : 0
-  const totalCarbonFootprint = runs.reduce((sum, r) => sum + r.carbonFootprint, 0)
-  const avgMemUsage =
-    runs.length > 0
-      ? runs.reduce((sum, r) => sum + r.avgMemUsage || 0, 0) / runs.length
-      : 0
+  // Calculate aggregate stats (memoized to avoid re-calculating on every real-time update)
+  const stats = useMemo(() => {
+    const totalEnergy = runs.reduce((sum, r) => sum + r.totalEnergy, 0)
+    const totalCoreHours = runs.reduce((sum, r) => sum + r.totalCoreHours, 0)
+    const avgCpuUsage =
+      runs.length > 0
+        ? runs.reduce((sum, r) => sum + r.avgCpuUsage, 0) / runs.length
+        : 0
+    const totalCarbonFootprint = runs.reduce((sum, r) => sum + r.carbonFootprint, 0)
+    const avgMemUsage =
+      runs.length > 0
+        ? runs.reduce((sum, r) => sum + r.avgMemUsage || 0, 0) / runs.length
+        : 0
+    const avgGpuUsage =
+      runs.length > 0
+        ? runs.reduce((sum, r) => sum + r.avgGpuUsage, 0) / runs.length
+        : 0
+
+    return {
+      totalEnergy,
+      totalCoreHours,
+      avgCpuUsage,
+      totalCarbonFootprint,
+      avgMemUsage,
+      avgGpuUsage
+    }
+  }, [runs])
 
   // Calculate trends (comparing last two runs)
-  const trend =
-    runs.length >= 2
-      ? {
-        energyTrend:
-          ((runs[runs.length - 2].totalEnergy -
-            runs[runs.length - 1].totalEnergy) /
-            runs[runs.length - 2].totalEnergy) *
-          100,
-        carbonTrend:
-          ((runs[runs.length - 2].carbonFootprint -
-            runs[runs.length - 1].carbonFootprint) /
-            runs[runs.length - 2].carbonFootprint) *
-          100,
-      }
-      : null
+  const trend = useMemo(() => {
+    if (runs.length < 2) return null
+
+    const prevRun = runs[runs.length - 2]
+    const lastRun = runs[runs.length - 1]
+
+    return {
+      energyTrend:
+        ((prevRun.totalEnergy - lastRun.totalEnergy) /
+          prevRun.totalEnergy) *
+        100,
+      carbonTrend:
+        ((prevRun.carbonFootprint - lastRun.carbonFootprint) /
+          prevRun.carbonFootprint) *
+        100,
+    }
+  }, [runs])
 
   return (
     <DashboardLayout>
@@ -143,7 +160,7 @@ export default function Dashboard() {
             <MetricCard
               icon={Zap}
               label="Total Energy"
-              value={Math.round(totalEnergy).toLocaleString()}
+              value={Math.round(stats.totalEnergy).toLocaleString()}
               unit="Wh"
               trend={
                 trend
@@ -158,14 +175,14 @@ export default function Dashboard() {
             <MetricCard
               icon={Clock}
               label="Total Core Hours"
-              value={(totalCoreHours / 24).toFixed(2)}
+              value={(stats.totalCoreHours / 24).toFixed(2)}
               unit="hrs"
               loading={loading}
             />
-            <MetricCard
+            {/* <MetricCard
               icon={Leaf}
               label="Carbon Footprint"
-              value={Math.round(totalCarbonFootprint).toLocaleString()}
+              value={Math.round(stats.totalCarbonFootprint).toLocaleString()}
               unit="g CO₂"
               trend={
                 trend
@@ -176,25 +193,25 @@ export default function Dashboard() {
                   : undefined
               }
               loading={loading}
-            />
+            /> */}
             <MetricCard
               icon={Activity}
               label="Avg CPU Usage"
-              value={avgCpuUsage.toFixed(1)}
+              value={stats.avgCpuUsage.toFixed(1)}
               unit="%"
               loading={loading}
             />
             <MetricCard
               icon={Activity}
               label="Avg GPU Usage"
-              value={(runs.reduce((sum, r) => sum + r.avgGpuUsage, 0) / (runs.length || 1)).toFixed(1)}
+              value={stats.avgGpuUsage.toFixed(1)}
               unit="%"
               loading={loading}
             />
             <MetricCard
               icon={Activity}
               label="Avg Memory Usage"
-              value={avgMemUsage.toFixed(1)}
+              value={stats.avgMemUsage.toFixed(1)}
               unit="%"
               loading={loading}
             />
@@ -211,8 +228,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Recent Runs Table */}
-        <RecentRunsTable runs={runs} />
+        {/* Projects Table */}
+        <ProjectsTable projects={projects} />
       </div>
     </DashboardLayout>
   )

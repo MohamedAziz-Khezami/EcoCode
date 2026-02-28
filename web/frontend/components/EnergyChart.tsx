@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -9,22 +10,27 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { Record } from '@/lib/mock-data'
+import { MetricRecord } from '@/lib/mock-data'
 import { format } from 'date-fns'
 
 interface EnergyChartProps {
-  data: Record[]
+  data: MetricRecord[]
 }
 
 export function EnergyChart({ data }: EnergyChartProps) {
-  const chartData = data.map((record) => ({
-    time: format(new Date(record.timestamp), 'HH:mm:ss'),
-    cpu: Number(record.cpu_energy.toFixed(2)),
-    gpu: Number(record.gpu_energy.toFixed(2)),
-    mem: Number(record.mem_energy.toFixed(2)),
-    igpu: Number(record.igpu_energy.toFixed(2)),
-    total: Number((record.cpu_energy + record.gpu_energy + record.mem_energy + record.igpu_energy).toFixed(2)),
-  }))
+  const chartData = useMemo(() => {
+    // Limit to the last 100 records for performance
+    const records = data.slice(-100)
+
+    return records.map((record) => ({
+      time: format(new Date(record.timestamp), 'HH:mm:ss'),
+      cpu: Number(record.cpu_energy.toFixed(2)),
+      gpu: Number(record.gpu_energy.toFixed(2)),
+      mem: Number(record.mem_energy.toFixed(2)),
+      igpu: Number(record.igpu_energy.toFixed(2)),
+      total: Number((record.cpu_energy + record.gpu_energy + record.mem_energy + record.igpu_energy).toFixed(2)),
+    }))
+  }, [data])
 
   return (
     <div className="chart-container">
@@ -59,7 +65,7 @@ export function EnergyChart({ data }: EnergyChartProps) {
             strokeWidth={2}
             dot={false}
             name="CPU Energy"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Line
             type="monotone"
@@ -68,7 +74,7 @@ export function EnergyChart({ data }: EnergyChartProps) {
             strokeWidth={2}
             dot={false}
             name="GPU Energy"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Line
             type="monotone"
@@ -77,7 +83,7 @@ export function EnergyChart({ data }: EnergyChartProps) {
             strokeWidth={2}
             dot={false}
             name="Memory Energy"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Line
             type="monotone"
@@ -86,7 +92,7 @@ export function EnergyChart({ data }: EnergyChartProps) {
             strokeWidth={2}
             dot={false}
             name="iGPU Energy"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

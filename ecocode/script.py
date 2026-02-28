@@ -71,7 +71,7 @@ def test(model, device, test_loader):
 
 def main():
     # Training settings
-    batch_size = 64
+    batch_size = 10
     test_batch_size = 10
     epochs = 5
     lr = 1.0

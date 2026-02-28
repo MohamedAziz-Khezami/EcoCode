@@ -6,10 +6,12 @@ import {
   LayoutDashboard,
   History,
   Leaf,
+  Folder,
 } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/projects', label: 'Projects', icon: Folder },
   { href: '/runs', label: 'Run History', icon: History },
 ]
 
@@ -39,11 +41,10 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                isActive
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${isActive
                   ? 'bg-primary/20 text-primary border border-primary/30'
                   : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-              }`}
+                }`}
             >
               <Icon className="w-5 h-5" />
               <span className="font-medium">{label}</span>

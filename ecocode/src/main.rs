@@ -25,7 +25,7 @@ use crate::sensor::rapl::{delta_cpu_energy_per_pid_w, get_all_energies};
 // --- Command-line argument parsing ---
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct Args {// TODO: Add run name 
     //project name
     #[arg(short, long, default_value = "ecocode")]
     project: String,

@@ -152,7 +152,7 @@ pub fn scan_rapl_files() -> Result<Vec<RaplFile>, Box<dyn Error>> {
                     file: file,
                     max_energy: get_max_energy(&max_energy_path)?, // TODO: read the max energy from the corresponding max_energy_range_uj file to detect counter resets
                 };
-                dbg!(&file);
+                // dbg!(&file);
                 rapl_files.push(file);
             }
         }

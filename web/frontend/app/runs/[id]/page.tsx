@@ -10,6 +10,7 @@ import { EnergyBreakdownChart } from '@/components/EnergyBreakdownChart'
 import { RunSystemInfo } from '@/components/RunSystemInfo'
 import { Run } from '@/lib/mock-data'
 import { fetchRunDetail } from '@/lib/api-client'
+import { useSSE } from '@/hooks/use-sse'
 import { format } from 'date-fns'
 
 interface RunDetailPageProps {
@@ -20,6 +21,7 @@ export default function RunDetailPage({ params }: RunDetailPageProps) {
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [paramId, setParamId] = useState<string | null>(null)
+  const { latestRecord } = useSSE()
 
   useEffect(() => {
     const initParams = async () => {
@@ -28,6 +30,47 @@ export default function RunDetailPage({ params }: RunDetailPageProps) {
     }
     initParams()
   }, [params])
+
+  // Update current run with real-time SSE data
+  useEffect(() => {
+    if (!latestRecord || !run || latestRecord.run_id !== paramId) return
+
+    setRun((prevRun) => {
+      if (!prevRun) return null
+
+      // Check if the record already exists to avoid duplicates
+      if (prevRun.records.some((r) => r.id === latestRecord.id)) return prevRun
+
+      const updatedRecords = [...prevRun.records, latestRecord]
+      const count = updatedRecords.length
+
+      // Calculate new total energy incrementally (O(1))
+      const newTotalEnergy =
+        prevRun.totalEnergy +
+        (latestRecord.cpu_energy +
+          latestRecord.gpu_energy +
+          latestRecord.mem_energy +
+          latestRecord.igpu_energy)
+
+      const energyKwh = newTotalEnergy / 1000
+
+      // Incremental averages
+      const avgCpuUsage = (prevRun.avgCpuUsage * (count - 1) + latestRecord.cpu_usage) / count
+      const avgGpuUsage = (prevRun.avgGpuUsage * (count - 1) + latestRecord.gpu_usage) / count
+      const avgMemUsage = (prevRun.avgMemUsage * (count - 1) + latestRecord.mem_usage) / count
+
+      return {
+        ...prevRun,
+        records: updatedRecords,
+        totalEnergy: newTotalEnergy,
+        carbonFootprint: energyKwh * 0.475 * 1000,
+        avgCpuUsage,
+        avgGpuUsage,
+        avgMemUsage,
+        status: 'running', // Definitely running if we're getting live data
+      }
+    })
+  }, [latestRecord, paramId])
 
   useEffect(() => {
     if (!paramId) return
@@ -147,7 +190,7 @@ export default function RunDetailPage({ params }: RunDetailPageProps) {
             </div>
           </div>
 
-          <div className="chart-container">
+          {/* <div className="chart-container">
             <div className="flex items-start gap-4">
               <div className="p-3 rounded-lg bg-primary/10">
                 <Leaf className="w-6 h-6 text-primary" />
@@ -164,7 +207,7 @@ export default function RunDetailPage({ params }: RunDetailPageProps) {
                 </p>
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </DashboardLayout>

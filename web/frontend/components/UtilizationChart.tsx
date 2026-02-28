@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   AreaChart,
   Area,
@@ -9,20 +10,25 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { Record } from '@/lib/mock-data'
+import { MetricRecord } from '@/lib/mock-data'
 import { format } from 'date-fns'
 
 interface UtilizationChartProps {
-  data: Record[]
+  data: MetricRecord[]
 }
 
 export function UtilizationChart({ data }: UtilizationChartProps) {
-  const chartData = data.map((record) => ({
-    time: format(new Date(record.timestamp), 'HH:mm:ss'),
-    cpu: Number(record.cpu_usage.toFixed(2)),
-    gpu: Number(record.gpu_usage.toFixed(2)),
-    mem: Number(record.mem_usage.toFixed(2)),
-  }))
+  const chartData = useMemo(() => {
+    // Limit to the last 100 records for performance
+    const records = data.slice(-100)
+
+    return records.map((record) => ({
+      time: format(new Date(record.timestamp), 'HH:mm:ss'),
+      cpu: Number(record.cpu_usage.toFixed(2)),
+      gpu: Number(record.gpu_usage.toFixed(2)),
+      mem: Number(record.mem_usage.toFixed(2)),
+    }))
+  }, [data])
 
   return (
     <div className="chart-container">
@@ -72,7 +78,7 @@ export function UtilizationChart({ data }: UtilizationChartProps) {
             fillOpacity={1}
             fill="url(#colorCpu)"
             name="CPU Usage"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Area
             type="monotone"
@@ -81,7 +87,7 @@ export function UtilizationChart({ data }: UtilizationChartProps) {
             fillOpacity={1}
             fill="url(#colorGpu)"
             name="GPU Usage"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
           <Area
             type="monotone"
@@ -90,7 +96,7 @@ export function UtilizationChart({ data }: UtilizationChartProps) {
             fillOpacity={1}
             fill="url(#colorMem)"
             name="Memory Usage"
-            isAnimationActive={true}
+            isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>

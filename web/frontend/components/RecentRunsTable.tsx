@@ -1,5 +1,6 @@
 'use client'
 
+import React, { memo } from 'react'
 import Link from 'next/link'
 import { Run } from '@/lib/mock-data'
 import { format } from 'date-fns'
@@ -9,7 +10,7 @@ interface RecentRunsTableProps {
   runs: Omit<Run, 'records'>[]
 }
 
-export function RecentRunsTable({ runs }: RecentRunsTableProps) {
+export const RecentRunsTable = memo(function RecentRunsTable({ runs }: RecentRunsTableProps) {
   const recentRuns = runs.slice(0, 5)
 
   return (
@@ -65,13 +66,12 @@ export function RecentRunsTable({ runs }: RecentRunsTableProps) {
                 </td>
                 <td className="text-center py-3 px-4">
                   <span
-                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                      run.status === 'finished'
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : run.status === 'running'
-                          ? 'bg-blue-500/20 text-blue-300'
-                          : 'bg-red-500/20 text-red-300'
-                    }`}
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${run.status === 'finished'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : run.status === 'running'
+                        ? 'bg-blue-500/20 text-blue-300'
+                        : 'bg-red-500/20 text-red-300'
+                      }`}
                   >
                     {run.status}
                   </span>
@@ -88,4 +88,4 @@ export function RecentRunsTable({ runs }: RecentRunsTableProps) {
       </div>
     </div>
   )
-}
+})

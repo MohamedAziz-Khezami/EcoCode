@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Record } from '@/lib/mock-data'
+import { MetricRecord } from '@/lib/mock-data'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
 export function useSSE() {
-    const [latestRecord, setLatestRecord] = useState<Record | null>(null)
+    const [latestRecord, setLatestRecord] = useState<MetricRecord | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
@@ -19,9 +19,10 @@ export function useSSE() {
                     const jsonStr = data.replace('New Project: ', '')
                     const record = JSON.parse(jsonStr)
 
-                    // Map backend record to frontend Record type
-                    const mappedRecord: Record = {
+                    // Map backend record to frontend MetricRecord type
+                    const mappedRecord: MetricRecord = {
                         id: record.id.toString(),
+                        run_id: record.run_id.toString(),
                         pid: record.pid,
                         timestamp: new Date(record.timestamp).getTime(),
                         cpu_usage: record.cpu_usage,
